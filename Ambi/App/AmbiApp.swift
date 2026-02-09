@@ -153,15 +153,21 @@ class AppState: ObservableObject {
         transcriptionEngine = TranscriptionEngine()
         
         isDownloadingModel = true
-        await transcriptionEngine?.loadModel(named: selectedModel) { progress in
+        await transcriptionEngine?.loadModel(named: selectedModel) { progress, message in
             Task { @MainActor in
                 self.modelDownloadProgress = progress
+                self.loadingMessage = message
             }
         }
         isDownloadingModel = false
         
         if let engine = transcriptionEngine {
             isModelLoaded = await engine.isModelLoaded
+            if !isModelLoaded {
+                if let error = await engine.loadError {
+                    loadingMessage = "Error: \(error)"
+                }
+            }
         }
         
         // Initialize audio recorder

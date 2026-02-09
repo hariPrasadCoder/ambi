@@ -5,10 +5,11 @@ actor TranscriptionEngine {
     private var whisperKit: WhisperKit?
     private(set) var isModelLoaded = false
     private var currentModelName = ""
+    private(set) var loadError: String?
     
     init() {}
     
-    func loadModel(named modelName: String = "base.en", progressCallback: ((Double) -> Void)? = nil) async {
+    func loadModel(named modelName: String = "base.en", progressCallback: ((Double, String) -> Void)? = nil) async {
         // Don't reload if same model
         if modelName == currentModelName && isModelLoaded {
             return
@@ -16,28 +17,43 @@ actor TranscriptionEngine {
         
         currentModelName = modelName
         isModelLoaded = false
+        loadError = nil
         whisperKit = nil
         
         print("TranscriptionEngine: Loading model \(modelName)...")
+        progressCallback?(0.1, "Checking model...")
         
         do {
-            // WhisperKit will download the model if needed
-            let config = WhisperKitConfig(
+            // Use verbose mode to see what's happening
+            progressCallback?(0.2, "Downloading model (this may take a few minutes)...")
+            
+            // Initialize WhisperKit with the model
+            // This will download if needed
+            whisperKit = try await WhisperKit(
                 model: modelName,
-                verbose: false,
-                logLevel: .error,
-                prewarm: true,
+                verbose: true,
+                logLevel: .debug,
+                prewarm: false,  // Don't prewarm initially
                 load: true,
                 download: true
             )
             
-            whisperKit = try await WhisperKit(config)
+            progressCallback?(0.8, "Warming up model...")
+            
+            // Prewarm after loading
+            try await whisperKit?.prewarmModels()
             
             isModelLoaded = true
+            loadError = nil
+            progressCallback?(1.0, "Ready!")
             print("TranscriptionEngine: Model \(modelName) loaded successfully")
+            
         } catch {
-            print("TranscriptionEngine: Failed to load model: \(error)")
+            let errorMsg = "Failed to load model: \(error.localizedDescription)"
+            print("TranscriptionEngine: \(errorMsg)")
+            loadError = errorMsg
             isModelLoaded = false
+            progressCallback?(0, errorMsg)
         }
     }
     
@@ -55,22 +71,8 @@ actor TranscriptionEngine {
         guard !samples.isEmpty else { return nil }
         
         do {
-            let options = DecodingOptions(
-                verbose: false,
-                task: .transcribe,
-                language: "en",
-                temperatureFallbackCount: 3,
-                sampleLength: 224,
-                usePrefillPrompt: true,
-                usePrefillCache: true,
-                skipSpecialTokens: true,
-                withoutTimestamps: true,
-                suppressBlank: true
-            )
-            
             let result = try await whisper.transcribe(
-                audioArray: samples,
-                decodeOptions: options
+                audioArray: samples
             )
             
             // Combine all segments
@@ -137,33 +139,7 @@ actor TranscriptionEngine {
             ("base", "Base (Multilingual)", "~140 MB"),
             ("small.en", "Small English", "~460 MB"),
             ("small", "Small (Multilingual)", "~460 MB"),
-            ("medium.en", "Medium English", "~1.5 GB"),
-            ("medium", "Medium (Multilingual)", "~1.5 GB"),
-            ("large-v3-turbo", "Large v3 Turbo", "~1.5 GB"),
-            ("large-v3", "Large v3", "~3 GB")
+            ("large-v3-turbo", "Large v3 Turbo", "~1.5 GB")
         ]
-    }
-}
-
-// WhisperKit config helper
-struct WhisperKitConfig {
-    let model: String
-    let verbose: Bool
-    let logLevel: Logging.LogLevel
-    let prewarm: Bool
-    let load: Bool
-    let download: Bool
-}
-
-extension WhisperKit {
-    convenience init(_ config: WhisperKitConfig) async throws {
-        try await self.init(
-            model: config.model,
-            verbose: config.verbose,
-            logLevel: config.logLevel,
-            prewarm: config.prewarm,
-            load: config.load,
-            download: config.download
-        )
     }
 }
