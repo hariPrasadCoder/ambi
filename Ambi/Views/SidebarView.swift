@@ -105,7 +105,7 @@ struct RecordingIndicator: View {
                 }
             }
         }
-        .onChange(of: appState.isRecording) { _, newValue in
+        .onChange(of: appState.isRecording) { newValue in
             if newValue && !appState.isPaused {
                 withAnimation(.easeInOut(duration: 1).repeatForever()) {
                     isPulsing = true
@@ -266,7 +266,7 @@ struct SessionRow: View {
                 // Arrow
                 Image(systemName: "chevron.right")
                     .font(.caption)
-                    .foregroundStyle(isSelected ? .white.opacity(0.7) : .tertiary)
+                    .foregroundColor(isSelected ? .white.opacity(0.7) : .secondary.opacity(0.5))
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)

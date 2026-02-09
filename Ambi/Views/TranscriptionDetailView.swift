@@ -32,10 +32,10 @@ struct TranscriptionDetailView: View {
         .task {
             await loadTranscriptions()
         }
-        .onChange(of: session.id) { _, _ in
+        .onChange(of: session.id) { _ in
             Task { await loadTranscriptions() }
         }
-        .onChange(of: appState.currentTranscription) { _, _ in
+        .onChange(of: appState.currentTranscription) { _ in
             // Refresh when new transcription comes in
             if appState.selectedSession?.id == session.id {
                 Task { await loadTranscriptions() }

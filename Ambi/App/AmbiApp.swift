@@ -98,7 +98,9 @@ class AppState: ObservableObject {
         // Initialize transcription engine
         transcriptionEngine = TranscriptionEngine()
         await transcriptionEngine?.loadModel()
-        isModelLoaded = transcriptionEngine?.isModelLoaded ?? false
+        if let engine = transcriptionEngine {
+            isModelLoaded = await engine.isModelLoaded
+        }
         
         // Initialize audio recorder
         audioRecorder = AudioRecorder { [weak self] audioData in
@@ -154,7 +156,9 @@ class AppState: ObservableObject {
     }
     
     private func processAudio(_ audioData: Data) async {
-        guard let engine = transcriptionEngine, engine.isModelLoaded else { return }
+        guard let engine = transcriptionEngine else { return }
+        let modelLoaded = await engine.isModelLoaded
+        guard modelLoaded else { return }
         
         if let text = await engine.transcribe(audioData: audioData), !text.isEmpty {
             currentTranscription = text
