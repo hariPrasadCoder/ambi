@@ -1,174 +1,137 @@
 import Foundation
 import AVFoundation
 
-final class AudioRecorder: NSObject {
+class AudioRecorder: NSObject, ObservableObject {
     private var audioEngine: AVAudioEngine?
     private var audioBuffer: [Float] = []
     private var bufferLock = NSLock()
-    private var transcriptionTimer: Timer?
-    private var isPaused = false
+    private let transcriptionCallback: (Data) -> Void
+    private var processingTimer: Timer?
+    
+    // State flags
     private var hasRequestedPermission = false
     private var isSetup = false
     
-    private let sampleRate: Double = 16000 // Whisper expects 16kHz
-    private let bufferDuration: TimeInterval = 30 // Process every 30 seconds
+    @Published var isRecording = false
+    @Published var isPaused = false
     
-    var onAudioReady: ((Data) -> Void)?
-    var onPermissionDenied: (() -> Void)?
+    // Callbacks
     var onRecordingStarted: (() -> Void)?
+    var onPermissionDenied: (() -> Void)?
     
-    init(onAudioReady: @escaping (Data) -> Void) {
-        self.onAudioReady = onAudioReady
+    // Settings
+    private let sampleRate: Double = 16000
+    private let processingInterval: TimeInterval
+    
+    init(processingInterval: TimeInterval = 30.0, transcriptionCallback: @escaping (Data) -> Void) {
+        self.processingInterval = processingInterval
+        self.transcriptionCallback = transcriptionCallback
         super.init()
     }
     
     func startRecording() {
-        // Prevent multiple calls
-        guard !isSetup else {
-            print("AudioRecorder: Already setup, skipping")
-            return
-        }
+        guard !isRecording else { return }
         
-        checkAndRequestPermission()
+        checkMicrophonePermission { [weak self] granted in
+            guard let self = self, granted else {
+                DispatchQueue.main.async {
+                    self?.onPermissionDenied?()
+                }
+                return
+            }
+            
+            DispatchQueue.main.async {
+                self.setupAndStartRecording()
+            }
+        }
     }
     
-    private func checkAndRequestPermission() {
-        // Prevent requesting multiple times
-        guard !hasRequestedPermission else {
-            print("AudioRecorder: Permission already requested")
-            return
-        }
-        
+    private func checkMicrophonePermission(completion: @escaping (Bool) -> Void) {
         let status = AVCaptureDevice.authorizationStatus(for: .audio)
-        print("AudioRecorder: Current permission status: \(status.rawValue)")
         
         switch status {
         case .authorized:
-            print("AudioRecorder: Permission authorized, starting engine")
-            DispatchQueue.main.async { [weak self] in
-                self?.setupAndStart()
-            }
+            completion(true)
             
         case .notDetermined:
+            guard !hasRequestedPermission else {
+                completion(false)
+                return
+            }
             hasRequestedPermission = true
-            print("AudioRecorder: Requesting permission...")
-            AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
-                print("AudioRecorder: Permission response: \(granted)")
-                DispatchQueue.main.async {
-                    if granted {
-                        self?.setupAndStart()
-                    } else {
-                        self?.onPermissionDenied?()
-                    }
-                }
+            
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                completion(granted)
             }
             
         case .denied, .restricted:
-            print("AudioRecorder: Permission denied or restricted")
-            onPermissionDenied?()
+            completion(false)
             
         @unknown default:
-            print("AudioRecorder: Unknown permission status")
-            break
+            completion(false)
         }
     }
     
-    private func setupAndStart() {
+    private func setupAndStartRecording() {
         guard !isSetup else {
-            print("AudioRecorder: Already setup")
+            resumeRecording()
             return
         }
         
-        print("AudioRecorder: Setting up audio engine...")
+        audioEngine = AVAudioEngine()
         
-        do {
-            try setupAudioEngine()
-            startTranscriptionTimer()
-            isSetup = true
-            onRecordingStarted?()
-            print("AudioRecorder: Successfully started")
-        } catch {
-            print("AudioRecorder: Failed to setup: \(error)")
+        guard let engine = audioEngine else {
+            print("AudioRecorder: Failed to create audio engine")
+            return
         }
-    }
-    
-    func stopRecording() {
-        print("AudioRecorder: Stopping...")
-        transcriptionTimer?.invalidate()
-        transcriptionTimer = nil
         
-        if let engine = audioEngine {
-            engine.inputNode.removeTap(onBus: 0)
-            engine.stop()
-        }
-        audioEngine = nil
-        isSetup = false
-    }
-    
-    func pauseRecording() {
-        isPaused = true
-        audioEngine?.pause()
-    }
-    
-    func resumeRecording() {
-        isPaused = false
-        try? audioEngine?.start()
-    }
-    
-    func startNewSession() {
-        bufferLock.lock()
-        audioBuffer.removeAll()
-        bufferLock.unlock()
-    }
-    
-    private func setupAudioEngine() throws {
-        let engine = AVAudioEngine()
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
         
-        print("AudioRecorder: Input format - sampleRate: \(inputFormat.sampleRate), channels: \(inputFormat.channelCount)")
-        
-        // Validate input format
-        guard inputFormat.sampleRate > 0 else {
-            throw AudioRecorderError.invalidInputFormat
-        }
-        
-        // Create format for Whisper (16kHz mono)
+        // Create output format at 16kHz mono for Whisper
         guard let outputFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: sampleRate,
             channels: 1,
             interleaved: false
         ) else {
-            throw AudioRecorderError.cannotCreateOutputFormat
+            print("AudioRecorder: Failed to create output format")
+            return
         }
         
         // Create converter
         guard let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
-            throw AudioRecorderError.cannotCreateConverter
+            print("AudioRecorder: Failed to create converter from \(inputFormat) to \(outputFormat)")
+            return
         }
         
-        // Install tap on input node
-        let bufferSize: AVAudioFrameCount = 4096
-        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { [weak self] buffer, _ in
+        // Install tap
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
             guard let self = self, !self.isPaused else { return }
             self.processAudioBuffer(buffer, converter: converter, outputFormat: outputFormat)
         }
         
-        engine.prepare()
-        try engine.start()
-        
-        self.audioEngine = engine
-        print("AudioRecorder: Engine started successfully")
+        do {
+            try engine.start()
+            isRecording = true
+            isPaused = false
+            isSetup = true
+            
+            // Start processing timer
+            startProcessingTimer()
+            
+            onRecordingStarted?()
+            print("AudioRecorder: Recording started")
+        } catch {
+            print("AudioRecorder: Failed to start engine: \(error)")
+            isRecording = false
+        }
     }
     
     private func processAudioBuffer(_ buffer: AVAudioPCMBuffer, converter: AVAudioConverter, outputFormat: AVAudioFormat) {
-        let frameCount = AVAudioFrameCount(
-            Double(buffer.frameLength) * sampleRate / buffer.format.sampleRate
-        )
+        let frameCount = AVAudioFrameCount(Double(buffer.frameLength) * sampleRate / buffer.format.sampleRate)
         
-        guard frameCount > 0,
-              let convertedBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: frameCount) else {
+        guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: frameCount) else {
             return
         }
         
@@ -180,30 +143,29 @@ final class AudioRecorder: NSObject {
         
         converter.convert(to: convertedBuffer, error: &error, withInputFrom: inputBlock)
         
-        if error != nil { return }
+        if let error = error {
+            print("AudioRecorder: Conversion error: \(error)")
+            return
+        }
         
-        if let channelData = convertedBuffer.floatChannelData?[0] {
-            let samples = Array(UnsafeBufferPointer(
-                start: channelData,
-                count: Int(convertedBuffer.frameLength)
-            ))
-            
-            bufferLock.lock()
-            audioBuffer.append(contentsOf: samples)
-            bufferLock.unlock()
+        guard let channelData = convertedBuffer.floatChannelData?[0] else { return }
+        let samples = Array(UnsafeBufferPointer(start: channelData, count: Int(convertedBuffer.frameLength)))
+        
+        bufferLock.lock()
+        audioBuffer.append(contentsOf: samples)
+        bufferLock.unlock()
+    }
+    
+    private func startProcessingTimer() {
+        processingTimer?.invalidate()
+        processingTimer = Timer.scheduledTimer(withTimeInterval: processingInterval, repeats: true) { [weak self] _ in
+            self?.processAccumulatedAudio()
         }
     }
     
-    private func startTranscriptionTimer() {
-        // Invalidate existing timer
-        transcriptionTimer?.invalidate()
+    private func processAccumulatedAudio() {
+        guard isRecording, !isPaused else { return }
         
-        transcriptionTimer = Timer.scheduledTimer(withTimeInterval: bufferDuration, repeats: true) { [weak self] _ in
-            self?.processBuffer()
-        }
-    }
-    
-    private func processBuffer() {
         bufferLock.lock()
         let samples = audioBuffer
         audioBuffer.removeAll()
@@ -211,39 +173,75 @@ final class AudioRecorder: NSObject {
         
         guard !samples.isEmpty else { return }
         
-        // Check if there's actual audio (not silence)
-        let energy = samples.reduce(0) { $0 + abs($1) } / Float(samples.count)
-        guard energy > 0.001 else { return }
+        // Check if audio has actual content (not silence)
+        let rms = sqrt(samples.map { $0 * $0 }.reduce(0, +) / Float(samples.count))
+        guard rms > 0.01 else {
+            print("AudioRecorder: Audio too quiet, skipping")
+            return
+        }
         
+        // Convert to Data
         let data = samples.withUnsafeBufferPointer { buffer in
             Data(buffer: buffer)
         }
         
-        DispatchQueue.main.async { [weak self] in
-            self?.onAudioReady?(data)
-        }
+        print("AudioRecorder: Processing \(samples.count) samples, RMS: \(rms)")
+        transcriptionCallback(data)
     }
-}
-
-// MARK: - Errors
-
-enum AudioRecorderError: Error {
-    case invalidInputFormat
-    case cannotCreateOutputFormat
-    case cannotCreateConverter
-}
-
-// MARK: - Utilities
-
-extension AudioRecorder {
-    static func formatDuration(_ seconds: Int) -> String {
-        let hours = seconds / 3600
-        let minutes = (seconds % 3600) / 60
-        let secs = seconds % 60
+    
+    func pauseRecording() {
+        guard isRecording, !isPaused else { return }
+        isPaused = true
+        processingTimer?.invalidate()
         
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, secs)
-        }
-        return String(format: "%d:%02d", minutes, secs)
+        // Process any remaining audio immediately
+        processAccumulatedAudio()
+        
+        print("AudioRecorder: Paused")
+    }
+    
+    func resumeRecording() {
+        guard isRecording, isPaused else { return }
+        isPaused = false
+        startProcessingTimer()
+        print("AudioRecorder: Resumed")
+    }
+    
+    func stopRecording() {
+        processingTimer?.invalidate()
+        processingTimer = nil
+        
+        // Process remaining audio
+        processAccumulatedAudio()
+        
+        audioEngine?.stop()
+        audioEngine?.inputNode.removeTap(onBus: 0)
+        audioEngine = nil
+        
+        isRecording = false
+        isPaused = false
+        isSetup = false
+        
+        bufferLock.lock()
+        audioBuffer.removeAll()
+        bufferLock.unlock()
+        
+        print("AudioRecorder: Stopped")
+    }
+    
+    func startNewSession() {
+        // Process any remaining audio first
+        processAccumulatedAudio()
+        
+        // Clear buffer for new session
+        bufferLock.lock()
+        audioBuffer.removeAll()
+        bufferLock.unlock()
+        
+        print("AudioRecorder: Started new session")
+    }
+    
+    deinit {
+        stopRecording()
     }
 }

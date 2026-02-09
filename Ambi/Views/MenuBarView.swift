@@ -2,49 +2,60 @@ import SwiftUI
 
 struct MenuBarView: View {
     @EnvironmentObject var appState: AppState
-    @Environment(\.openWindow) private var openWindow
     
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            MenuBarHeader()
+            // Notch-style header with status
+            NotchHeader()
             
             Divider()
-                .padding(.horizontal)
+                .opacity(0.5)
             
-            // Current transcription preview
-            if !appState.currentTranscription.isEmpty {
-                CurrentTranscriptionPreview()
+            // Live transcript preview
+            if appState.isRecording && !appState.liveTranscript.isEmpty {
+                LiveTranscriptView()
             }
             
             // Quick actions
-            QuickActions()
+            QuickActionsView()
             
             Divider()
-                .padding(.horizontal)
+                .opacity(0.5)
             
             // Footer
-            MenuBarFooter()
+            FooterView()
         }
-        .frame(width: 320)
-        .padding(.vertical, 8)
+        .frame(width: 340)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 }
 
-struct MenuBarHeader: View {
+// MARK: - Notch Header
+
+struct NotchHeader: View {
     @EnvironmentObject var appState: AppState
+    @State private var isPulsing = false
     
     var body: some View {
-        HStack {
-            // Status indicator
-            HStack(spacing: 8) {
+        VStack(spacing: 12) {
+            // Status row
+            HStack(spacing: 16) {
+                // Recording indicator
                 ZStack {
                     Circle()
                         .fill(statusColor.opacity(0.2))
-                        .frame(width: 32, height: 32)
+                        .frame(width: 44, height: 44)
+                    
+                    if appState.isRecording && !appState.isPaused {
+                        Circle()
+                            .fill(statusColor.opacity(0.3))
+                            .frame(width: 44, height: 44)
+                            .scaleEffect(isPulsing ? 1.3 : 1.0)
+                            .opacity(isPulsing ? 0 : 0.5)
+                    }
                     
                     Image(systemName: statusIcon)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(statusColor)
                 }
                 
@@ -56,25 +67,64 @@ struct MenuBarHeader: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                
+                Spacer()
+                
+                // Model badge
+                if appState.isModelLoaded {
+                    Text(modelDisplayName)
+                        .font(.caption2)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Color.primary.opacity(0.1)))
+                }
             }
             
-            Spacer()
-            
-            // Toggle recording
-            Button(action: { appState.toggleRecording() }) {
-                Image(systemName: appState.isPaused ? "play.fill" : "pause.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                    .frame(width: 28, height: 28)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(Color.primary.opacity(0.1))
-                    )
+            // Interactive controls
+            HStack(spacing: 12) {
+                // Record/Pause button
+                ControlButton(
+                    icon: appState.isPaused ? "play.fill" : "pause.fill",
+                    label: appState.isPaused ? "Resume" : "Pause",
+                    color: .orange,
+                    action: { appState.toggleRecording() }
+                )
+                .disabled(!appState.isRecording)
+                .opacity(appState.isRecording ? 1 : 0.5)
+                
+                // New session button
+                ControlButton(
+                    icon: "plus",
+                    label: "New",
+                    color: .blue,
+                    action: { appState.startNewSession() }
+                )
+                
+                // Open app button
+                ControlButton(
+                    icon: "macwindow",
+                    label: "Open",
+                    color: .purple,
+                    action: openApp
+                )
             }
-            .buttonStyle(.plain)
-            .help(appState.isPaused ? "Resume Recording" : "Pause Recording")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(16)
+        .onAppear {
+            startPulseAnimation()
+        }
+        .onChange(of: appState.isRecording) { _, newValue in
+            if newValue && !appState.isPaused {
+                startPulseAnimation()
+            }
+        }
+        .onChange(of: appState.isPaused) { _, newValue in
+            if !newValue && appState.isRecording {
+                startPulseAnimation()
+            }
+        }
     }
     
     private var statusColor: Color {
@@ -88,41 +138,120 @@ struct MenuBarHeader: View {
         if !appState.isRecording {
             return "mic.slash"
         }
-        return appState.isPaused ? "pause.circle" : "mic"
+        return appState.isPaused ? "pause.circle" : "mic.fill"
     }
     
     private var statusText: String {
+        if appState.isDownloadingModel {
+            return "Downloading model... \(Int(appState.modelDownloadProgress * 100))%"
+        }
+        if !appState.isModelLoaded {
+            return "Loading model..."
+        }
         if !appState.isRecording {
             return "Not recording"
         }
-        return appState.isPaused ? "Paused" : "Recording active"
+        return appState.isPaused ? "Paused" : "Recording"
+    }
+    
+    private var modelDisplayName: String {
+        let model = appState.selectedModel
+        if model.contains("tiny") { return "Tiny" }
+        if model.contains("base") { return "Base" }
+        if model.contains("small") { return "Small" }
+        if model.contains("medium") { return "Medium" }
+        if model.contains("large") { return "Large" }
+        return model
+    }
+    
+    private func startPulseAnimation() {
+        withAnimation(.easeInOut(duration: 1).repeatForever(autoreverses: true)) {
+            isPulsing = true
+        }
+    }
+    
+    private func openApp() {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        for window in NSApplication.shared.windows {
+            if window.title.isEmpty || window.title == "Ambi" {
+                window.makeKeyAndOrderFront(nil)
+                break
+            }
+        }
     }
 }
 
-struct CurrentTranscriptionPreview: View {
+struct ControlButton: View {
+    let icon: String
+    let label: String
+    let color: Color
+    let action: () -> Void
+    
+    @State private var isHovered = false
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(isHovered ? color.opacity(0.2) : color.opacity(0.1))
+                        .frame(width: 44, height: 44)
+                    
+                    Image(systemName: icon)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(color)
+                }
+                
+                Text(label)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.15)) {
+                isHovered = hovering
+            }
+        }
+    }
+}
+
+// MARK: - Live Transcript
+
+struct LiveTranscriptView: View {
     @EnvironmentObject var appState: AppState
+    @State private var isExpanded = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Latest")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 6, height: 6)
+                    
+                    Text("Live")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                }
                 
                 Spacer()
                 
-                Text("Just now")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                Button(action: { withAnimation { isExpanded.toggle() } }) {
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
             }
             
-            Text(appState.currentTranscription)
+            Text(appState.liveTranscript)
                 .font(.subheadline)
-                .lineLimit(3)
-                .foregroundStyle(.primary)
+                .lineLimit(isExpanded ? nil : 3)
+                .animation(.easeOut(duration: 0.2), value: isExpanded)
         }
-        .padding()
+        .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 10)
                 .fill(Color.primary.opacity(0.05))
@@ -132,49 +261,29 @@ struct CurrentTranscriptionPreview: View {
     }
 }
 
-struct QuickActions: View {
+// MARK: - Quick Actions
+
+struct QuickActionsView: View {
     @EnvironmentObject var appState: AppState
     
     var body: some View {
         VStack(spacing: 4) {
-            // New session
-            MenuBarButton(
-                title: "New Session",
-                icon: "plus.circle",
-                action: { appState.startNewSession() }
-            )
-            
-            // Open app
-            MenuBarButton(
-                title: "Open Ambi",
-                icon: "macwindow",
-                shortcut: "⌘O",
-                action: openApp
-            )
-            
-            // Settings
-            MenuBarButton(
-                title: "Settings...",
+            MenuRowButton(
                 icon: "gear",
-                shortcut: "⌘,",
-                action: { appState.showSettings = true }
-            )
+                title: "Settings...",
+                shortcut: "⌘,"
+            ) {
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            }
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-    }
-    
-    private func openApp() {
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        if let window = NSApplication.shared.windows.first(where: { $0.title != "Ambi" || $0.isVisible == false }) {
-            window.makeKeyAndOrderFront(nil)
-        }
+        .padding(.vertical, 8)
     }
 }
 
-struct MenuBarButton: View {
-    let title: String
+struct MenuRowButton: View {
     let icon: String
+    let title: String
     var shortcut: String? = nil
     let action: () -> Void
     
@@ -205,7 +314,6 @@ struct MenuBarButton: View {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(isHovered ? Color.primary.opacity(0.1) : Color.clear)
             )
-            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hovering in
@@ -214,7 +322,9 @@ struct MenuBarButton: View {
     }
 }
 
-struct MenuBarFooter: View {
+// MARK: - Footer
+
+struct FooterView: View {
     var body: some View {
         HStack {
             Text("v1.0.0")
@@ -231,8 +341,7 @@ struct MenuBarFooter: View {
             .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
+        .padding(.vertical, 10)
     }
 }
 

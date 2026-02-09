@@ -24,25 +24,26 @@ struct SettingsView: View {
                     Label("About", systemImage: "info.circle")
                 }
         }
-        .frame(width: 500, height: 400)
+        .frame(width: 550, height: 450)
     }
 }
 
+// MARK: - General Settings
+
 struct GeneralSettings: View {
-    @AppStorage("launchAtLogin") private var launchAtLogin = true
+    @AppStorage("launchAtLogin") private var launchAtLogin = false
     @AppStorage("showInDock") private var showInDock = false
-    @AppStorage("playSoundOnTranscription") private var playSoundOnTranscription = false
     
     var body: some View {
         Form {
             Section {
                 Toggle("Launch at login", isOn: $launchAtLogin)
-                    .onChange(of: launchAtLogin) { newValue in
+                    .onChange(of: launchAtLogin) { _, newValue in
                         setLaunchAtLogin(newValue)
                     }
                 
                 Toggle("Show in Dock", isOn: $showInDock)
-                    .onChange(of: showInDock) { newValue in
+                    .onChange(of: showInDock) { _, newValue in
                         setDockVisibility(newValue)
                     }
             } header: {
@@ -50,9 +51,20 @@ struct GeneralSettings: View {
             }
             
             Section {
-                Toggle("Play sound on new transcription", isOn: $playSoundOnTranscription)
+                HStack {
+                    Text("Microphone")
+                    Spacer()
+                    if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized {
+                        Label("Granted", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    } else {
+                        Button("Request Access") {
+                            AVCaptureDevice.requestAccess(for: .audio) { _ in }
+                        }
+                    }
+                }
             } header: {
-                Text("Notifications")
+                Text("Permissions")
             }
         }
         .formStyle(.grouped)
@@ -76,66 +88,69 @@ struct GeneralSettings: View {
     }
 }
 
+import AVFoundation
+
+// MARK: - Transcription Settings
+
 struct TranscriptionSettings: View {
-    @AppStorage("whisperModel") private var whisperModel = "large-v3-turbo"
+    @EnvironmentObject var appState: AppState
     @AppStorage("transcriptionInterval") private var transcriptionInterval = 30.0
-    @AppStorage("language") private var language = "en"
     
-    let models = [
-        ("tiny", "Tiny (~75MB) - Fastest"),
-        ("tiny.en", "Tiny English (~75MB)"),
-        ("base", "Base (~142MB)"),
-        ("base.en", "Base English (~142MB)"),
-        ("small", "Small (~466MB)"),
-        ("small.en", "Small English (~466MB)"),
-        ("medium", "Medium (~1.5GB)"),
-        ("medium.en", "Medium English (~1.5GB)"),
-        ("large-v3", "Large v3 (~3GB) - Most Accurate"),
-        ("large-v3-turbo", "Large v3 Turbo (~1.5GB) - Recommended")
-    ]
-    
-    let languages = [
-        ("en", "English"),
-        ("es", "Spanish"),
-        ("fr", "French"),
-        ("de", "German"),
-        ("it", "Italian"),
-        ("pt", "Portuguese"),
-        ("zh", "Chinese"),
-        ("ja", "Japanese"),
-        ("ko", "Korean"),
-        ("auto", "Auto-detect")
+    let models: [(id: String, name: String, size: String, accuracy: String)] = [
+        ("tiny.en", "Tiny English", "~75 MB", "⭐"),
+        ("base.en", "Base English", "~140 MB", "⭐⭐"),
+        ("small.en", "Small English", "~460 MB", "⭐⭐⭐"),
+        ("medium.en", "Medium English", "~1.5 GB", "⭐⭐⭐⭐"),
+        ("large-v3-turbo", "Large v3 Turbo", "~1.5 GB", "⭐⭐⭐⭐⭐")
     ]
     
     var body: some View {
         Form {
             Section {
-                Picker("Model", selection: $whisperModel) {
-                    ForEach(models, id: \.0) { model in
-                        Text(model.1).tag(model.0)
+                ForEach(models, id: \.id) { model in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(model.name)
+                                .font(.headline)
+                            
+                            HStack(spacing: 8) {
+                                Text(model.size)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                
+                                Text(model.accuracy)
+                                    .font(.caption)
+                            }
+                        }
+                        
+                        Spacer()
+                        
+                        if appState.selectedModel == model.id {
+                            if appState.isDownloadingModel {
+                                ProgressView(value: appState.modelDownloadProgress)
+                                    .frame(width: 60)
+                            } else {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                            }
+                        } else {
+                            Button("Select") {
+                                appState.changeModel(to: model.id)
+                            }
+                            .buttonStyle(.bordered)
+                        }
                     }
+                    .padding(.vertical, 4)
                 }
-                
-                Text("Larger models are more accurate but use more memory and CPU")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             } header: {
                 Text("Whisper Model")
-            }
-            
-            Section {
-                Picker("Language", selection: $language) {
-                    ForEach(languages, id: \.0) { lang in
-                        Text(lang.1).tag(lang.0)
-                    }
-                }
-            } header: {
-                Text("Language")
+            } footer: {
+                Text("Larger models are more accurate but require more memory and take longer to process.")
             }
             
             Section {
                 Slider(value: $transcriptionInterval, in: 10...120, step: 10) {
-                    Text("Transcription interval")
+                    Text("Processing Interval")
                 } minimumValueLabel: {
                     Text("10s")
                 } maximumValueLabel: {
@@ -154,15 +169,19 @@ struct TranscriptionSettings: View {
     }
 }
 
+// MARK: - Storage Settings
+
 struct StorageSettings: View {
     @State private var storageUsed: String = "Calculating..."
     @State private var transcriptionCount: Int = 0
+    @State private var sessionCount: Int = 0
     
     var body: some View {
         Form {
             Section {
                 LabeledContent("Storage Used", value: storageUsed)
-                LabeledContent("Total Transcriptions", value: "\(transcriptionCount)")
+                LabeledContent("Sessions", value: "\(sessionCount)")
+                LabeledContent("Transcriptions", value: "\(transcriptionCount)")
             } header: {
                 Text("Usage")
             }
@@ -177,7 +196,7 @@ struct StorageSettings: View {
                 }
                 
                 Button("Clear All Data", role: .destructive) {
-                    // Would show confirmation dialog
+                    // Would show confirmation
                 }
             } header: {
                 Text("Data Management")
@@ -196,21 +215,22 @@ struct StorageSettings: View {
         let ambiDir = appSupport.appendingPathComponent("Ambi")
         
         do {
-            let contents = try fileManager.contentsOfDirectory(at: ambiDir, includingPropertiesForKeys: [.fileSizeKey])
             var totalSize: Int64 = 0
             
-            for url in contents {
-                let resourceValues = try url.resourceValues(forKeys: [.fileSizeKey])
-                totalSize += Int64(resourceValues.fileSize ?? 0)
+            if let enumerator = fileManager.enumerator(at: ambiDir, includingPropertiesForKeys: [.fileSizeKey]) {
+                for case let fileURL as URL in enumerator {
+                    let resourceValues = try fileURL.resourceValues(forKeys: [.fileSizeKey])
+                    totalSize += Int64(resourceValues.fileSize ?? 0)
+                }
             }
             
             let formatter = ByteCountFormatter()
             formatter.countStyle = .file
             storageUsed = formatter.string(fromByteCount: totalSize)
             
-            // Get transcription count
             if let db = try? DatabaseManager() {
                 transcriptionCount = (try? db.getTotalTranscriptionCount()) ?? 0
+                sessionCount = (try? db.fetchAllSessions().count) ?? 0
             }
         } catch {
             storageUsed = "Unable to calculate"
@@ -231,12 +251,14 @@ struct StorageSettings: View {
         
         panel.begin { response in
             if response == .OK, let url = panel.url {
-                // Would export actual data here
+                // Would export actual data
                 try? "{}".write(to: url, atomically: true, encoding: .utf8)
             }
         }
     }
 }
+
+// MARK: - About View
 
 struct AboutView: View {
     var body: some View {
@@ -296,4 +318,5 @@ struct AboutView: View {
 
 #Preview {
     SettingsView()
+        .environmentObject(AppState.shared)
 }

@@ -19,6 +19,7 @@
 		830100000000000A /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830000000000000A /* MenuBarView.swift */; };
 		830100000000000B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830000000000000B /* SettingsView.swift */; };
 		830100000000000C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 830000000000000C /* Assets.xcassets */; };
+		830100000000000F /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830000000000000F /* OnboardingView.swift */; };
 		830100000000000D /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 830200000000000D /* GRDB */; };
 		830100000000000E /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 830200000000000E /* WhisperKit */; };
 /* End PBXBuildFile section */
@@ -39,6 +40,7 @@
 		830000000000000C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		830000000000000D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		830000000000000E /* Ambi.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Ambi.entitlements; sourceTree = "<group>"; };
+		830000000000000F /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -127,6 +129,7 @@
 				8300000000000009 /* TranscriptionDetailView.swift */,
 				830000000000000A /* MenuBarView.swift */,
 				830000000000000B /* SettingsView.swift */,
+				830000000000000F /* OnboardingView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -235,6 +238,7 @@
 				8301000000000009 /* TranscriptionDetailView.swift in Sources */,
 				830100000000000A /* MenuBarView.swift in Sources */,
 				830100000000000B /* SettingsView.swift in Sources */,
+				830100000000000F /* OnboardingView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

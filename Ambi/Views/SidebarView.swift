@@ -5,325 +5,234 @@ struct SidebarView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            SidebarHeader()
+            // Recording status header
+            RecordingStatusHeader()
             
             Divider()
-                .padding(.horizontal)
             
-            // Sessions List
-            if appState.sessions.isEmpty {
-                EmptySidebarView()
-            } else {
-                SessionsList()
-            }
-        }
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
-    }
-}
-
-struct SidebarHeader: View {
-    @EnvironmentObject var appState: AppState
-    
-    var body: some View {
-        VStack(spacing: 12) {
-            HStack {
-                // Logo and title
-                HStack(spacing: 10) {
-                    ZStack {
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [.ambiGradientStart, .ambiGradientEnd],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 36, height: 36)
-                        
-                        Image(systemName: "waveform")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
+            // Session list
+            List(selection: Binding(
+                get: { appState.selectedSession?.id },
+                set: { id in
+                    if let id = id, let session = appState.sessions.first(where: { $0.id == id }) {
+                        appState.selectSession(session)
                     }
-                    
-                    Text("Ambi")
-                        .font(.title2)
-                        .fontWeight(.bold)
                 }
-                
-                Spacer()
-                
-                // Recording status
-                RecordingIndicator()
+            )) {
+                Section("Recent") {
+                    ForEach(filteredSessions) { session in
+                        SessionRow(session: session)
+                            .tag(session.id)
+                    }
+                    .onDelete(perform: deleteSession)
+                }
             }
-            
-            // Quick stats
-            HStack(spacing: 16) {
-                StatBadge(
-                    icon: "calendar",
-                    value: "\(appState.sessions.count)",
-                    label: "Sessions"
-                )
-                
-                StatBadge(
-                    icon: "clock",
-                    value: "Today",
-                    label: appState.isRecording ? "Active" : "Paused"
-                )
-            }
+            .listStyle(.sidebar)
         }
-        .padding()
+        .navigationTitle("Sessions")
+    }
+    
+    private var filteredSessions: [Session] {
+        if appState.searchQuery.isEmpty {
+            return appState.sessions
+        }
+        return appState.searchTranscriptions()
+    }
+    
+    private func deleteSession(at offsets: IndexSet) {
+        for index in offsets {
+            let session = filteredSessions[index]
+            appState.deleteSession(session)
+        }
     }
 }
 
-struct RecordingIndicator: View {
+// MARK: - Recording Status Header
+
+struct RecordingStatusHeader: View {
     @EnvironmentObject var appState: AppState
     @State private var isPulsing = false
     
     var body: some View {
-        Button(action: { appState.toggleRecording() }) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(indicatorColor)
-                    .frame(width: 8, height: 8)
-                    .scaleEffect(isPulsing ? 1.2 : 1.0)
+        VStack(spacing: 16) {
+            // Status indicator
+            HStack(spacing: 12) {
+                ZStack {
+                    if appState.isRecording && !appState.isPaused {
+                        Circle()
+                            .fill(Color.green.opacity(0.3))
+                            .frame(width: 32, height: 32)
+                            .scaleEffect(isPulsing ? 1.4 : 1.0)
+                            .opacity(isPulsing ? 0 : 0.5)
+                    }
+                    
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: 12, height: 12)
+                }
                 
-                Text(statusText)
-                    .font(.caption)
-                    .fontWeight(.medium)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(statusTitle)
+                        .font(.headline)
+                    
+                    Text(statusSubtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                
+                Spacer()
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(indicatorColor.opacity(0.15))
-            .clipShape(Capsule())
+            
+            // Controls
+            HStack(spacing: 12) {
+                Button(action: { appState.toggleRecording() }) {
+                    Label(
+                        appState.isPaused ? "Resume" : (appState.isRecording ? "Pause" : "Record"),
+                        systemImage: appState.isPaused ? "play.fill" : (appState.isRecording ? "pause.fill" : "record.circle")
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(appState.isRecording && !appState.isPaused ? .orange : .green)
+                .disabled(!appState.isModelLoaded)
+                
+                Button(action: { appState.startNewSession() }) {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.bordered)
+                .help("New Session")
+            }
         }
-        .buttonStyle(.plain)
+        .padding()
         .onAppear {
             if appState.isRecording && !appState.isPaused {
-                withAnimation(.easeInOut(duration: 1).repeatForever()) {
-                    isPulsing = true
-                }
+                startPulse()
             }
         }
-        .onChange(of: appState.isRecording) { newValue in
+        .onChange(of: appState.isRecording) { _, newValue in
             if newValue && !appState.isPaused {
-                withAnimation(.easeInOut(duration: 1).repeatForever()) {
-                    isPulsing = true
-                }
-            } else {
-                isPulsing = false
+                startPulse()
+            }
+        }
+        .onChange(of: appState.isPaused) { _, newValue in
+            if !newValue && appState.isRecording {
+                startPulse()
             }
         }
     }
     
-    private var indicatorColor: Color {
+    private var statusColor: Color {
         if !appState.isRecording {
             return .gray
         }
-        return appState.isPaused ? .orange : .red
+        return appState.isPaused ? .orange : .green
     }
     
-    private var statusText: String {
+    private var statusTitle: String {
+        if appState.isDownloadingModel {
+            return "Downloading Model..."
+        }
+        if !appState.isModelLoaded {
+            return "Loading Model..."
+        }
         if !appState.isRecording {
-            return "Stopped"
+            return "Not Recording"
         }
         return appState.isPaused ? "Paused" : "Recording"
     }
-}
-
-struct StatBadge: View {
-    let icon: String
-    let value: String
-    let label: String
     
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            
-            VStack(alignment: .leading, spacing: 1) {
-                Text(value)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                
-                Text(label)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
+    private var statusSubtitle: String {
+        if appState.isDownloadingModel {
+            return "\(Int(appState.modelDownloadProgress * 100))% complete"
+        }
+        if !appState.isModelLoaded {
+            return "Please wait..."
+        }
+        if !appState.isRecording {
+            return "Click Record to start"
+        }
+        return appState.isPaused ? "Click Resume to continue" : "Listening to audio..."
+    }
+    
+    private func startPulse() {
+        withAnimation(.easeInOut(duration: 1).repeatForever()) {
+            isPulsing = true
         }
     }
 }
 
-struct SessionsList: View {
-    @EnvironmentObject var appState: AppState
-    
-    private var groupedSessions: [(String, [Session])] {
-        let sessions = appState.searchQuery.isEmpty 
-            ? appState.sessions 
-            : appState.searchTranscriptions()
-        
-        let grouped = Dictionary(grouping: sessions) { session -> String in
-            if Calendar.current.isDateInToday(session.date) {
-                return "Today"
-            } else if Calendar.current.isDateInYesterday(session.date) {
-                return "Yesterday"
-            } else if Calendar.current.isDate(session.date, equalTo: Date(), toGranularity: .weekOfYear) {
-                return "This Week"
-            } else if Calendar.current.isDate(session.date, equalTo: Date(), toGranularity: .month) {
-                return "This Month"
-            } else {
-                let formatter = DateFormatter()
-                formatter.dateFormat = "MMMM yyyy"
-                return formatter.string(from: session.date)
-            }
-        }
-        
-        let order = ["Today", "Yesterday", "This Week", "This Month"]
-        return grouped.sorted { first, second in
-            let idx1 = order.firstIndex(of: first.key) ?? Int.max
-            let idx2 = order.firstIndex(of: second.key) ?? Int.max
-            if idx1 != idx2 { return idx1 < idx2 }
-            return first.key > second.key
-        }
-    }
-    
-    var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 0, pinnedViews: .sectionHeaders) {
-                ForEach(groupedSessions, id: \.0) { group, sessions in
-                    Section {
-                        ForEach(sessions) { session in
-                            SessionRow(session: session)
-                        }
-                    } header: {
-                        SectionHeader(title: group)
-                    }
-                }
-            }
-            .padding(.horizontal)
-            .padding(.top, 8)
-        }
-    }
-}
-
-struct SectionHeader: View {
-    let title: String
-    
-    var body: some View {
-        HStack {
-            Text(title)
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-            
-            Spacer()
-        }
-        .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.8))
-    }
-}
+// MARK: - Session Row
 
 struct SessionRow: View {
     @EnvironmentObject var appState: AppState
     let session: Session
     
-    private var isSelected: Bool {
-        appState.selectedSession?.id == session.id
-    }
+    @State private var isHovered = false
     
     var body: some View {
-        Button(action: { appState.selectedSession = session }) {
-            HStack(spacing: 12) {
-                // Date indicator
-                VStack(spacing: 2) {
-                    Text(session.shortDate.components(separatedBy: " ").first ?? "")
-                        .font(.caption2)
-                        .fontWeight(.medium)
-                        .foregroundStyle(.secondary)
-                    
-                    Text(session.shortDate.components(separatedBy: " ").last ?? "")
-                        .font(.title3)
-                        .fontWeight(.bold)
-                }
-                .frame(width: 40)
+        HStack(spacing: 12) {
+            // Icon
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(iconColor.opacity(0.15))
+                    .frame(width: 36, height: 36)
                 
-                // Content
-                VStack(alignment: .leading, spacing: 4) {
+                Image(systemName: isToday ? "waveform" : "text.alignleft")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(iconColor)
+            }
+            
+            // Content
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
                     Text(session.displayTitle)
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .lineLimit(1)
-                        .foregroundStyle(isSelected ? .white : .primary)
                     
-                    Text(session.timeString)
-                        .font(.caption)
-                        .foregroundStyle(isSelected ? .white.opacity(0.7) : .secondary)
+                    if isToday && appState.isRecording {
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 6, height: 6)
+                    }
                 }
                 
-                Spacer()
-                
-                // Arrow
-                Image(systemName: "chevron.right")
+                Text(session.formattedDate)
                     .font(.caption)
-                    .foregroundColor(isSelected ? .white.opacity(0.7) : .secondary.opacity(0.5))
+                    .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(isSelected 
-                        ? LinearGradient(
-                            colors: [.ambiGradientStart, .ambiGradientEnd],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                          )
-                        : LinearGradient(
-                            colors: [Color.clear, Color.clear],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                          )
-                    )
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .contextMenu {
-            Button(role: .destructive) {
-                appState.deleteSession(session)
-            } label: {
-                Label("Delete Session", systemImage: "trash")
+            
+            Spacer()
+            
+            // Transcription count
+            if session.transcriptionCount > 0 {
+                Text("\(session.transcriptionCount)")
+                    .font(.caption2)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Color.primary.opacity(0.08)))
             }
         }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
     }
-}
-
-struct EmptySidebarView: View {
-    var body: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            
-            Image(systemName: "mic.badge.plus")
-                .font(.system(size: 40))
-                .foregroundStyle(.tertiary)
-            
-            Text("No recordings yet")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-            
-            Text("Start speaking and Ambi will\nautomatically capture your voice")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
-            
-            Spacer()
+    
+    private var isToday: Bool {
+        Calendar.current.isDateInToday(session.date)
+    }
+    
+    private var iconColor: Color {
+        if isToday {
+            return .ambiAccent
         }
-        .padding()
+        return .secondary
     }
 }
 
 #Preview {
     SidebarView()
         .environmentObject(AppState.shared)
-        .frame(width: 300, height: 600)
+        .frame(width: 280, height: 500)
 }

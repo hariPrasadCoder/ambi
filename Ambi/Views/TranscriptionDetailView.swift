@@ -4,8 +4,6 @@ struct TranscriptionDetailView: View {
     @EnvironmentObject var appState: AppState
     let session: Session
     
-    @State private var transcriptions: [Transcription] = []
-    @State private var isLoading = true
     @State private var hoveredId: Int64?
     
     var body: some View {
@@ -16,49 +14,59 @@ struct TranscriptionDetailView: View {
             Divider()
             
             // Content
-            if isLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if transcriptions.isEmpty {
-                EmptyTranscriptionView()
-            } else {
-                TranscriptionContent(
-                    transcriptions: transcriptions,
-                    hoveredId: $hoveredId
-                )
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
+                        // Live transcript section (if recording this session)
+                        if isCurrentSession && appState.isRecording {
+                            LiveTranscriptSection()
+                        }
+                        
+                        // Historical transcriptions
+                        if appState.transcriptions.isEmpty && !appState.isRecording {
+                            EmptyTranscriptionView()
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, 100)
+                        } else {
+                            ForEach(appState.transcriptions) { transcription in
+                                TranscriptionBlock(
+                                    transcription: transcription,
+                                    isHovered: hoveredId == transcription.id
+                                )
+                                .onHover { isHovered in
+                                    hoveredId = isHovered ? transcription.id : nil
+                                }
+                                .id(transcription.id)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 16)
+                }
+                .onChange(of: appState.transcriptions.count) { _, _ in
+                    // Scroll to latest
+                    if let lastId = appState.transcriptions.last?.id {
+                        withAnimation(.easeOut(duration: 0.3)) {
+                            proxy.scrollTo(lastId, anchor: .bottom)
+                        }
+                    }
+                }
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
-        .task {
-            await loadTranscriptions()
-        }
-        .onChange(of: session.id) { _ in
-            Task { await loadTranscriptions() }
-        }
-        .onChange(of: appState.currentTranscription) { _ in
-            // Refresh when new transcription comes in
-            if appState.selectedSession?.id == session.id {
-                Task { await loadTranscriptions() }
-            }
-        }
     }
     
-    private func loadTranscriptions() async {
-        isLoading = true
-        
-        // Simulate loading from database
-        do {
-            let db = try DatabaseManager()
-            if let id = session.id {
-                transcriptions = try db.fetchTranscriptions(forSession: id)
-            }
-        } catch {
-            print("Failed to load transcriptions: \(error)")
+    private var isCurrentSession: Bool {
+        guard let sessionDate = Calendar.current.dateComponents([.year, .month, .day], from: session.date).date else {
+            return false
         }
-        
-        isLoading = false
+        let today = Calendar.current.startOfDay(for: Date())
+        let sessionDay = Calendar.current.startOfDay(for: session.date)
+        return today == sessionDay
     }
 }
+
+// MARK: - Detail Header
 
 struct DetailHeader: View {
     @EnvironmentObject var appState: AppState
@@ -74,6 +82,10 @@ struct DetailHeader: View {
                 HStack(spacing: 12) {
                     Label(session.formattedDate, systemImage: "calendar")
                     Label(session.timeString, systemImage: "clock")
+                    
+                    if !appState.transcriptions.isEmpty {
+                        Label("\(appState.transcriptions.count) segments", systemImage: "text.alignleft")
+                    }
                 }
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -82,21 +94,18 @@ struct DetailHeader: View {
             Spacer()
             
             HStack(spacing: 8) {
-                // Copy button
                 Button(action: copyAll) {
                     Image(systemName: "doc.on.doc")
                 }
                 .buttonStyle(HeaderButtonStyle())
                 .help("Copy all transcriptions")
                 
-                // Export button
                 Button(action: exportSession) {
                     Image(systemName: "square.and.arrow.up")
                 }
                 .buttonStyle(HeaderButtonStyle())
                 .help("Export session")
                 
-                // More options
                 Menu {
                     Button(action: copyAll) {
                         Label("Copy All", systemImage: "doc.on.doc")
@@ -125,23 +134,22 @@ struct DetailHeader: View {
     }
     
     private func copyAll() {
-        // Copy all transcriptions to clipboard
+        let text = appState.transcriptions.map { $0.text }.joined(separator: "\n\n")
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        // Would need actual transcription text here
-        pasteboard.setString("Transcription copied", forType: .string)
+        pasteboard.setString(text, forType: .string)
     }
     
     private func exportSession() {
-        // Export session to file
+        let text = appState.transcriptions.map { "[\($0.formattedTime)] \($0.text)" }.joined(separator: "\n\n")
+        
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.plainText]
         panel.nameFieldStringValue = "\(session.displayTitle).txt"
         
         panel.begin { response in
             if response == .OK, let url = panel.url {
-                // Would write actual transcription text here
-                try? "Exported transcription".write(to: url, atomically: true, encoding: .utf8)
+                try? text.write(to: url, atomically: true, encoding: .utf8)
             }
         }
     }
@@ -154,37 +162,86 @@ struct HeaderButtonStyle: ButtonStyle {
             .frame(width: 32, height: 32)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(configuration.isPressed 
-                        ? Color.primary.opacity(0.1) 
-                        : Color.clear
-                    )
+                    .fill(configuration.isPressed ? Color.primary.opacity(0.1) : Color.clear)
             )
             .foregroundStyle(.secondary)
     }
 }
 
-struct TranscriptionContent: View {
-    let transcriptions: [Transcription]
-    @Binding var hoveredId: Int64?
+// MARK: - Live Transcript Section
+
+struct LiveTranscriptSection: View {
+    @EnvironmentObject var appState: AppState
+    @State private var isPulsing = false
     
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(transcriptions) { transcription in
-                    TranscriptionBlock(
-                        transcription: transcription,
-                        isHovered: hoveredId == transcription.id
-                    )
-                    .onHover { isHovered in
-                        hoveredId = isHovered ? transcription.id : nil
+        if !appState.liveTranscript.isEmpty || (appState.isRecording && !appState.isPaused) {
+            VStack(alignment: .leading, spacing: 12) {
+                // Header
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 8, height: 8)
+                        .scaleEffect(isPulsing ? 1.3 : 1.0)
+                        .opacity(isPulsing ? 0.6 : 1.0)
+                    
+                    Text("Live Transcription")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                    
+                    Spacer()
+                    
+                    if appState.isPaused {
+                        Text("PAUSED")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Color.orange.opacity(0.2)))
                     }
                 }
+                
+                // Content
+                if appState.liveTranscript.isEmpty && !appState.isPaused {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                        
+                        Text("Listening...")
+                            .font(.subheadline)
+                            .foregroundStyle(.tertiary)
+                    }
+                } else {
+                    Text(appState.liveTranscript)
+                        .font(.body)
+                        .lineSpacing(6)
+                        .foregroundStyle(appState.isPaused ? .primary : .secondary)
+                        .animation(.easeOut(duration: 0.2), value: appState.liveTranscript)
+                }
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 16)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.red.opacity(0.05))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.red.opacity(0.2), lineWidth: 1)
+                    )
+            )
+            .padding(.bottom, 16)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.8).repeatForever()) {
+                    isPulsing = true
+                }
+            }
         }
     }
 }
+
+// MARK: - Transcription Block
 
 struct TranscriptionBlock: View {
     let transcription: Transcription
@@ -201,11 +258,16 @@ struct TranscriptionBlock: View {
                 .foregroundStyle(.tertiary)
                 .frame(width: 60, alignment: .trailing)
             
-            // Divider line
-            Rectangle()
-                .fill(Color.ambiAccent.opacity(0.3))
-                .frame(width: 2)
-                .clipShape(RoundedRectangle(cornerRadius: 1))
+            // Timeline indicator
+            VStack(spacing: 0) {
+                Circle()
+                    .fill(Color.ambiAccent)
+                    .frame(width: 8, height: 8)
+                
+                Rectangle()
+                    .fill(Color.ambiAccent.opacity(0.3))
+                    .frame(width: 2)
+            }
             
             // Content
             VStack(alignment: .leading, spacing: 8) {
@@ -231,10 +293,7 @@ struct TranscriptionBlock: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(isHovered 
-                        ? Color.primary.opacity(0.03) 
-                        : Color.clear
-                    )
+                    .fill(isHovered ? Color.primary.opacity(0.03) : Color.clear)
             )
         }
         .animation(.easeInOut(duration: 0.15), value: isHovered)
@@ -257,44 +316,32 @@ struct TranscriptionBlock: View {
     }
 }
 
+// MARK: - Empty View
+
 struct EmptyTranscriptionView: View {
     @EnvironmentObject var appState: AppState
     
     var body: some View {
         VStack(spacing: 20) {
-            Spacer()
-            
             ZStack {
                 Circle()
                     .fill(Color.ambiAccent.opacity(0.1))
-                    .frame(width: 100, height: 100)
+                    .frame(width: 80, height: 80)
                 
                 Image(systemName: "text.bubble")
-                    .font(.system(size: 40))
+                    .font(.system(size: 32))
                     .foregroundStyle(Color.ambiAccent)
             }
             
-            Text("No transcriptions yet")
-                .font(.title3)
-                .fontWeight(.semibold)
-            
-            Text("Start speaking and your words will appear here")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            
-            if appState.isRecording && !appState.isPaused {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .scaleEffect(0.7)
-                    
-                    Text("Listening...")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.top, 8)
+            VStack(spacing: 8) {
+                Text("No transcriptions yet")
+                    .font(.headline)
+                
+                Text("Start speaking and your words\nwill appear here")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
-            
-            Spacer()
         }
     }
 }

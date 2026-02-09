@@ -4,31 +4,46 @@ import WhisperKit
 actor TranscriptionEngine {
     private var whisperKit: WhisperKit?
     private(set) var isModelLoaded = false
-    private var modelName = "large-v3-turbo"
+    private var currentModelName = ""
     
     init() {}
     
-    func loadModel() async {
+    func loadModel(named modelName: String = "base.en", progressCallback: ((Double) -> Void)? = nil) async {
+        // Don't reload if same model
+        if modelName == currentModelName && isModelLoaded {
+            return
+        }
+        
+        currentModelName = modelName
+        isModelLoaded = false
+        whisperKit = nil
+        
+        print("TranscriptionEngine: Loading model \(modelName)...")
+        
         do {
-            // Initialize WhisperKit with specified model
-            whisperKit = try await WhisperKit(
+            // WhisperKit will download the model if needed
+            let config = WhisperKitConfig(
                 model: modelName,
                 verbose: false,
                 logLevel: .error,
                 prewarm: true,
-                load: true
+                load: true,
+                download: true
             )
+            
+            whisperKit = try await WhisperKit(config)
+            
             isModelLoaded = true
-            print("Whisper model loaded successfully: \(modelName)")
+            print("TranscriptionEngine: Model \(modelName) loaded successfully")
         } catch {
-            print("Failed to load Whisper model: \(error)")
+            print("TranscriptionEngine: Failed to load model: \(error)")
             isModelLoaded = false
         }
     }
     
     func transcribe(audioData: Data) async -> String? {
         guard let whisper = whisperKit, isModelLoaded else {
-            print("Whisper not ready")
+            print("TranscriptionEngine: Whisper not ready")
             return nil
         }
         
@@ -40,20 +55,22 @@ actor TranscriptionEngine {
         guard !samples.isEmpty else { return nil }
         
         do {
+            let options = DecodingOptions(
+                verbose: false,
+                task: .transcribe,
+                language: "en",
+                temperatureFallbackCount: 3,
+                sampleLength: 224,
+                usePrefillPrompt: true,
+                usePrefillCache: true,
+                skipSpecialTokens: true,
+                withoutTimestamps: true,
+                suppressBlank: true
+            )
+            
             let result = try await whisper.transcribe(
                 audioArray: samples,
-                decodeOptions: DecodingOptions(
-                    verbose: false,
-                    task: .transcribe,
-                    language: "en",
-                    temperatureFallbackCount: 3,
-                    sampleLength: 224,
-                    usePrefillPrompt: true,
-                    usePrefillCache: true,
-                    skipSpecialTokens: true,
-                    withoutTimestamps: true,
-                    suppressBlank: true
-                )
+                decodeOptions: options
             )
             
             // Combine all segments
@@ -65,7 +82,7 @@ actor TranscriptionEngine {
             
             return filtered.isEmpty ? nil : filtered
         } catch {
-            print("Transcription error: \(error)")
+            print("TranscriptionEngine: Transcription error: \(error)")
             return nil
         }
     }
@@ -85,7 +102,15 @@ actor TranscriptionEngine {
             "♪",
             "...",
             "[BLANK_AUDIO]",
-            "[SILENCE]"
+            "[SILENCE]",
+            "you",
+            "You",
+            "I'm sorry.",
+            "Thanks.",
+            "Okay.",
+            "OK.",
+            "Uh",
+            "Um"
         ]
         
         let lowered = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
@@ -96,35 +121,49 @@ actor TranscriptionEngine {
             }
         }
         
-        // Filter very short transcriptions that are likely noise
-        if text.count < 3 {
+        // Filter very short transcriptions
+        if text.count < 5 {
             return ""
         }
         
         return text
     }
     
-    func setModel(_ name: String) async {
-        guard name != modelName else { return }
-        modelName = name
-        isModelLoaded = false
-        whisperKit = nil
-        await loadModel()
-    }
-    
-    func getAvailableModels() -> [String] {
+    func getAvailableModels() -> [(id: String, name: String, size: String)] {
         [
-            "tiny",
-            "tiny.en",
-            "base",
-            "base.en",
-            "small",
-            "small.en",
-            "medium",
-            "medium.en",
-            "large-v2",
-            "large-v3",
-            "large-v3-turbo"
+            ("tiny.en", "Tiny English", "~75 MB"),
+            ("tiny", "Tiny (Multilingual)", "~75 MB"),
+            ("base.en", "Base English", "~140 MB"),
+            ("base", "Base (Multilingual)", "~140 MB"),
+            ("small.en", "Small English", "~460 MB"),
+            ("small", "Small (Multilingual)", "~460 MB"),
+            ("medium.en", "Medium English", "~1.5 GB"),
+            ("medium", "Medium (Multilingual)", "~1.5 GB"),
+            ("large-v3-turbo", "Large v3 Turbo", "~1.5 GB"),
+            ("large-v3", "Large v3", "~3 GB")
         ]
+    }
+}
+
+// WhisperKit config helper
+struct WhisperKitConfig {
+    let model: String
+    let verbose: Bool
+    let logLevel: Logging.LogLevel
+    let prewarm: Bool
+    let load: Bool
+    let download: Bool
+}
+
+extension WhisperKit {
+    convenience init(_ config: WhisperKitConfig) async throws {
+        try await self.init(
+            model: config.model,
+            verbose: config.verbose,
+            logLevel: config.logLevel,
+            prewarm: config.prewarm,
+            load: config.load,
+            download: config.download
+        )
     }
 }

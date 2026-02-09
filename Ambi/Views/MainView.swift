@@ -18,57 +18,88 @@ struct MainView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay {
             if appState.isLoading {
-                LoadingView()
+                LoadingOverlay(message: appState.loadingMessage)
+            }
+            
+            if appState.isDownloadingModel {
+                ModelDownloadOverlay(progress: appState.modelDownloadProgress)
             }
         }
         .searchable(text: $appState.searchQuery, placement: .sidebar, prompt: "Search transcriptions")
     }
 }
 
+// MARK: - Empty State
+
 struct EmptyStateView: View {
     @EnvironmentObject var appState: AppState
     
     var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "waveform.circle")
-                .font(.system(size: 64))
-                .foregroundStyle(.tertiary)
+        VStack(spacing: 24) {
+            ZStack {
+                Circle()
+                    .fill(Color.ambiAccent.opacity(0.1))
+                    .frame(width: 100, height: 100)
+                
+                Image(systemName: "waveform.circle")
+                    .font(.system(size: 48))
+                    .foregroundStyle(Color.ambiAccent)
+            }
             
-            Text("No Session Selected")
-                .font(.title2)
-                .fontWeight(.medium)
-                .foregroundStyle(.secondary)
+            VStack(spacing: 8) {
+                Text("No Session Selected")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                
+                Text("Select a session from the sidebar\nor start speaking to create one")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
             
-            Text("Select a session from the sidebar to view its transcription")
-                .font(.subheadline)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
-            
-            if appState.isRecording {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(appState.isPaused ? .orange : .red)
-                        .frame(width: 8, height: 8)
-                        .opacity(appState.isPaused ? 1 : 0.8)
-                    
-                    Text(appState.isPaused ? "Recording Paused" : "Recording...")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.top, 8)
+            if appState.isRecording && !appState.isPaused {
+                RecordingIndicatorBadge()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
-struct LoadingView: View {
+struct RecordingIndicatorBadge: View {
+    @State private var isAnimating = false
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(.red)
+                .frame(width: 8, height: 8)
+                .scaleEffect(isAnimating ? 1.2 : 1.0)
+            
+            Text("Recording...")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(Color.red.opacity(0.1)))
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.8).repeatForever()) {
+                isAnimating = true
+            }
+        }
+    }
+}
+
+// MARK: - Loading Overlay
+
+struct LoadingOverlay: View {
+    let message: String
     @State private var rotation: Double = 0
     
     var body: some View {
         ZStack {
             Color(nsColor: .windowBackgroundColor)
-                .opacity(0.9)
+                .opacity(0.95)
             
             VStack(spacing: 24) {
                 ZStack {
@@ -81,7 +112,7 @@ struct LoadingView: View {
                         .trim(from: 0, to: 0.3)
                         .stroke(
                             LinearGradient(
-                                colors: [.blue, .purple],
+                                colors: [.ambiGradientStart, .ambiGradientEnd],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             ),
@@ -92,11 +123,11 @@ struct LoadingView: View {
                 }
                 
                 VStack(spacing: 8) {
-                    Text("Loading Ambi")
+                    Text("Loading")
                         .font(.title3)
                         .fontWeight(.semibold)
                     
-                    Text("Preparing transcription engine...")
+                    Text(message)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -107,6 +138,52 @@ struct LoadingView: View {
                 rotation = 360
             }
         }
+    }
+}
+
+// MARK: - Model Download Overlay
+
+struct ModelDownloadOverlay: View {
+    let progress: Double
+    
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.5)
+            
+            VStack(spacing: 20) {
+                Image(systemName: "arrow.down.circle")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.white)
+                
+                VStack(spacing: 8) {
+                    Text("Downloading Whisper Model")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                    
+                    Text("This is a one-time download")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.7))
+                }
+                
+                VStack(spacing: 8) {
+                    ProgressView(value: progress)
+                        .progressViewStyle(.linear)
+                        .tint(.ambiAccent)
+                        .frame(width: 200)
+                    
+                    Text("\(Int(progress * 100))%")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.white.opacity(0.7))
+                }
+            }
+            .padding(40)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(Color(white: 0.15))
+            )
+        }
+        .transition(.opacity)
     }
 }
 

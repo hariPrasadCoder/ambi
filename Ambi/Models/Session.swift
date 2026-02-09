@@ -1,60 +1,51 @@
 import Foundation
 import GRDB
 
-struct Session: Identifiable, Codable, Equatable, FetchableRecord, PersistableRecord {
+struct Session: Identifiable, Codable, FetchableRecord, PersistableRecord, Equatable, Hashable {
     var id: Int64?
-    var title: String?
+    var title: String
     var date: Date
-    var createdAt: Date
-    var updatedAt: Date
+    var transcriptionCount: Int
     
-    static let databaseTableName = "sessions"
+    static var databaseTableName: String { "sessions" }
     
-    static let transcriptions = hasMany(Transcription.self)
-    
-    var transcriptionsRequest: QueryInterfaceRequest<Transcription> {
-        request(for: Session.transcriptions)
-    }
-    
-    init(id: Int64? = nil, title: String? = nil, date: Date = Date(), createdAt: Date = Date(), updatedAt: Date = Date()) {
+    init(id: Int64? = nil, title: String, date: Date, transcriptionCount: Int = 0) {
         self.id = id
         self.title = title
         self.date = date
-        self.createdAt = createdAt
-        self.updatedAt = updatedAt
+        self.transcriptionCount = transcriptionCount
     }
     
-    mutating func didInsert(_ inserted: InsertionSuccess) {
-        id = inserted.rowID
-    }
-}
-
-extension Session {
+    // Display helpers
     var displayTitle: String {
-        title ?? formattedDate
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) {
+            return "Today"
+        } else if calendar.isDateInYesterday(date) {
+            return "Yesterday"
+        } else {
+            return formattedDate
+        }
     }
     
     var formattedDate: String {
         let formatter = DateFormatter()
-        if Calendar.current.isDateInToday(date) {
-            return "Today"
-        } else if Calendar.current.isDateInYesterday(date) {
-            return "Yesterday"
-        } else {
-            formatter.dateStyle = .medium
-            return formatter.string(from: date)
-        }
-    }
-    
-    var shortDate: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d"
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
         return formatter.string(from: date)
     }
     
     var timeString: String {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
-        return formatter.string(from: createdAt)
+        return formatter.string(from: date)
+    }
+    
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+    
+    static func == (lhs: Session, rhs: Session) -> Bool {
+        lhs.id == rhs.id
     }
 }
