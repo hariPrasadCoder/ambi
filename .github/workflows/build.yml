@@ -19,6 +19,9 @@ jobs:
         with:
           xcode-version: '15.2'
       
+      - name: Install ImageMagick
+        run: brew install imagemagick
+      
       - name: Resolve Package Dependencies
         run: |
           xcodebuild -resolvePackageDependencies \
@@ -36,9 +39,25 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
       
-      - name: Generate DMG Background
+      - name: Create DMG Background
         run: |
-          swift scripts/generate-dmg-background.swift dmg-background.png
+          # Create a nice dark gradient background with text using ImageMagick
+          convert -size 660x400 \
+            -define gradient:angle=135 \
+            gradient:'#1a1a22'-'#0d0d14' \
+            -font Helvetica-Bold -pointsize 42 -fill white \
+            -gravity North -annotate +0+50 'Ambi' \
+            -font Helvetica -pointsize 14 -fill '#b0b0b0' \
+            -gravity North -annotate +0+100 'Ambient Voice Recorder' \
+            -fill '#8090ff' -stroke '#8090ff' -strokewidth 3 \
+            -draw "line 220,200 420,200" \
+            -draw "polygon 430,200 415,190 415,210" \
+            -font Helvetica -pointsize 13 -fill '#909090' -stroke none \
+            -gravity South -annotate +0+50 'Drag to Applications to install' \
+            dmg-background.png
+          
+          echo "Created DMG background"
+          ls -la dmg-background.png
       
       - name: Create Styled DMG
         run: |
@@ -58,6 +77,7 @@ jobs:
           
           # Mount DMG
           MOUNT_DIR=$(hdiutil attach temp.dmg | grep "/Volumes/Ambi" | awk '{print $3}')
+          echo "Mounted at: $MOUNT_DIR"
           
           # Create .background directory and copy background
           mkdir -p "$MOUNT_DIR/.background"
@@ -97,6 +117,9 @@ jobs:
           # Cleanup
           rm -f temp.dmg
           rm -rf dmg_temp
+          
+          echo "Created: $DMG_NAME.dmg"
+          ls -la *.dmg
       
       - name: Upload DMG Artifact
         uses: actions/upload-artifact@v4
