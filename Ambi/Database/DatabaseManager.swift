@@ -97,8 +97,11 @@ class DatabaseManager {
                 date: Date(),
                 transcriptionCount: 0
             )
-            
+
             try session.insert(db)
+            // Fetch the session back to get the auto-generated ID
+            let id = db.lastInsertedRowID
+            session.id = id
             return session
         }
     }

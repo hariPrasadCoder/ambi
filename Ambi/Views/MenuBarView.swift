@@ -45,15 +45,16 @@ struct NotchHeader: View {
                     Circle()
                         .fill(statusColor.opacity(0.2))
                         .frame(width: 44, height: 44)
-                    
-                    if appState.isRecording && !appState.isPaused {
-                        Circle()
-                            .fill(statusColor.opacity(0.3))
-                            .frame(width: 44, height: 44)
-                            .scaleEffect(isPulsing ? 1.3 : 1.0)
-                            .opacity(isPulsing ? 0 : 0.5)
-                    }
-                    
+
+                    // Pulse effect disabled to prevent UI shaking
+                    // if appState.isRecording && !appState.isPaused {
+                    //     Circle()
+                    //         .fill(statusColor.opacity(0.3))
+                    //         .frame(width: 44, height: 44)
+                    //         .scaleEffect(isPulsing ? 1.3 : 1.0)
+                    //         .opacity(isPulsing ? 0 : 0.5)
+                    // }
+
                     Image(systemName: statusIcon)
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(statusColor)
@@ -112,19 +113,20 @@ struct NotchHeader: View {
             }
         }
         .padding(16)
-        .onAppear {
-            startPulseAnimation()
-        }
-        .onChange(of: appState.isRecording) { newValue in
-            if newValue && !appState.isPaused {
-                startPulseAnimation()
-            }
-        }
-        .onChange(of: appState.isPaused) { newValue in
-            if !newValue && appState.isRecording {
-                startPulseAnimation()
-            }
-        }
+        // Pulse animation disabled to prevent UI shaking
+        // .onAppear {
+        //     startPulseAnimation()
+        // }
+        // .onChange(of: appState.isRecording) { newValue in
+        //     if newValue && !appState.isPaused {
+        //         startPulseAnimation()
+        //     }
+        // }
+        // .onChange(of: appState.isPaused) { newValue in
+        //     if !newValue && appState.isRecording {
+        //         startPulseAnimation()
+        //     }
+        // }
     }
     
     private var statusColor: Color {
