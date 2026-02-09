@@ -3,16 +3,19 @@ import AVFoundation
 
 final class AudioRecorder: NSObject {
     private var audioEngine: AVAudioEngine?
-    private var inputNode: AVAudioInputNode?
     private var audioBuffer: [Float] = []
     private var bufferLock = NSLock()
     private var transcriptionTimer: Timer?
     private var isPaused = false
+    private var hasRequestedPermission = false
+    private var isSetup = false
     
     private let sampleRate: Double = 16000 // Whisper expects 16kHz
     private let bufferDuration: TimeInterval = 30 // Process every 30 seconds
     
     var onAudioReady: ((Data) -> Void)?
+    var onPermissionDenied: (() -> Void)?
+    var onRecordingStarted: (() -> Void)?
     
     init(onAudioReady: @escaping (Data) -> Void) {
         self.onAudioReady = onAudioReady
@@ -20,35 +23,86 @@ final class AudioRecorder: NSObject {
     }
     
     func startRecording() {
+        // Prevent multiple calls
+        guard !isSetup else {
+            print("AudioRecorder: Already setup, skipping")
+            return
+        }
+        
+        checkAndRequestPermission()
+    }
+    
+    private func checkAndRequestPermission() {
+        // Prevent requesting multiple times
+        guard !hasRequestedPermission else {
+            print("AudioRecorder: Permission already requested")
+            return
+        }
+        
         let status = AVCaptureDevice.authorizationStatus(for: .audio)
+        print("AudioRecorder: Current permission status: \(status.rawValue)")
         
         switch status {
         case .authorized:
-            setupAudioEngine()
-            startTranscriptionTimer()
+            print("AudioRecorder: Permission authorized, starting engine")
+            DispatchQueue.main.async { [weak self] in
+                self?.setupAndStart()
+            }
+            
         case .notDetermined:
+            hasRequestedPermission = true
+            print("AudioRecorder: Requesting permission...")
             AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
-                if granted {
-                    DispatchQueue.main.async {
-                        self?.setupAudioEngine()
-                        self?.startTranscriptionTimer()
+                print("AudioRecorder: Permission response: \(granted)")
+                DispatchQueue.main.async {
+                    if granted {
+                        self?.setupAndStart()
+                    } else {
+                        self?.onPermissionDenied?()
                     }
                 }
             }
+            
         case .denied, .restricted:
-            print("Microphone access denied. Please enable in System Settings > Privacy & Security > Microphone")
+            print("AudioRecorder: Permission denied or restricted")
+            onPermissionDenied?()
+            
         @unknown default:
+            print("AudioRecorder: Unknown permission status")
             break
         }
     }
     
+    private func setupAndStart() {
+        guard !isSetup else {
+            print("AudioRecorder: Already setup")
+            return
+        }
+        
+        print("AudioRecorder: Setting up audio engine...")
+        
+        do {
+            try setupAudioEngine()
+            startTranscriptionTimer()
+            isSetup = true
+            onRecordingStarted?()
+            print("AudioRecorder: Successfully started")
+        } catch {
+            print("AudioRecorder: Failed to setup: \(error)")
+        }
+    }
+    
     func stopRecording() {
+        print("AudioRecorder: Stopping...")
         transcriptionTimer?.invalidate()
         transcriptionTimer = nil
-        audioEngine?.stop()
-        audioEngine?.inputNode.removeTap(onBus: 0)
+        
+        if let engine = audioEngine {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+        }
         audioEngine = nil
-        inputNode = nil
+        isSetup = false
     }
     
     func pauseRecording() {
@@ -62,24 +116,22 @@ final class AudioRecorder: NSObject {
     }
     
     func startNewSession() {
-        // Clear buffer to start fresh
         bufferLock.lock()
         audioBuffer.removeAll()
         bufferLock.unlock()
     }
     
-    private func setupAudioEngine() {
-        // Don't setup if already running
-        if audioEngine?.isRunning == true {
-            return
+    private func setupAudioEngine() throws {
+        let engine = AVAudioEngine()
+        let inputNode = engine.inputNode
+        let inputFormat = inputNode.outputFormat(forBus: 0)
+        
+        print("AudioRecorder: Input format - sampleRate: \(inputFormat.sampleRate), channels: \(inputFormat.channelCount)")
+        
+        // Validate input format
+        guard inputFormat.sampleRate > 0 else {
+            throw AudioRecorderError.invalidInputFormat
         }
-        audioEngine = AVAudioEngine()
-        guard let engine = audioEngine else { return }
-        
-        inputNode = engine.inputNode
-        guard let input = inputNode else { return }
-        
-        let inputFormat = input.outputFormat(forBus: 0)
         
         // Create format for Whisper (16kHz mono)
         guard let outputFormat = AVAudioFormat(
@@ -87,63 +139,65 @@ final class AudioRecorder: NSObject {
             sampleRate: sampleRate,
             channels: 1,
             interleaved: false
-        ) else { return }
+        ) else {
+            throw AudioRecorderError.cannotCreateOutputFormat
+        }
         
         // Create converter
         guard let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
-            print("Failed to create audio converter")
-            return
+            throw AudioRecorderError.cannotCreateConverter
         }
         
         // Install tap on input node
         let bufferSize: AVAudioFrameCount = 4096
-        input.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { [weak self] buffer, time in
+        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { [weak self] buffer, _ in
             guard let self = self, !self.isPaused else { return }
-            
-            // Convert to 16kHz mono
-            let frameCount = AVAudioFrameCount(
-                Double(buffer.frameLength) * self.sampleRate / inputFormat.sampleRate
-            )
-            
-            guard let convertedBuffer = AVAudioPCMBuffer(
-                pcmFormat: outputFormat,
-                frameCapacity: frameCount
-            ) else { return }
-            
-            var error: NSError?
-            let inputBlock: AVAudioConverterInputBlock = { inNumPackets, outStatus in
-                outStatus.pointee = .haveData
-                return buffer
-            }
-            
-            converter.convert(to: convertedBuffer, error: &error, withInputFrom: inputBlock)
-            
-            if let error = error {
-                print("Conversion error: \(error)")
-                return
-            }
-            
-            // Append to buffer
-            if let channelData = convertedBuffer.floatChannelData?[0] {
-                let samples = Array(UnsafeBufferPointer(
-                    start: channelData,
-                    count: Int(convertedBuffer.frameLength)
-                ))
-                
-                self.bufferLock.lock()
-                self.audioBuffer.append(contentsOf: samples)
-                self.bufferLock.unlock()
-            }
+            self.processAudioBuffer(buffer, converter: converter, outputFormat: outputFormat)
         }
         
-        do {
-            try engine.start()
-        } catch {
-            print("Failed to start audio engine: \(error)")
+        engine.prepare()
+        try engine.start()
+        
+        self.audioEngine = engine
+        print("AudioRecorder: Engine started successfully")
+    }
+    
+    private func processAudioBuffer(_ buffer: AVAudioPCMBuffer, converter: AVAudioConverter, outputFormat: AVAudioFormat) {
+        let frameCount = AVAudioFrameCount(
+            Double(buffer.frameLength) * sampleRate / buffer.format.sampleRate
+        )
+        
+        guard frameCount > 0,
+              let convertedBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: frameCount) else {
+            return
+        }
+        
+        var error: NSError?
+        let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
+            outStatus.pointee = .haveData
+            return buffer
+        }
+        
+        converter.convert(to: convertedBuffer, error: &error, withInputFrom: inputBlock)
+        
+        if error != nil { return }
+        
+        if let channelData = convertedBuffer.floatChannelData?[0] {
+            let samples = Array(UnsafeBufferPointer(
+                start: channelData,
+                count: Int(convertedBuffer.frameLength)
+            ))
+            
+            bufferLock.lock()
+            audioBuffer.append(contentsOf: samples)
+            bufferLock.unlock()
         }
     }
     
     private func startTranscriptionTimer() {
+        // Invalidate existing timer
+        transcriptionTimer?.invalidate()
+        
         transcriptionTimer = Timer.scheduledTimer(withTimeInterval: bufferDuration, repeats: true) { [weak self] _ in
             self?.processBuffer()
         }
@@ -159,21 +213,27 @@ final class AudioRecorder: NSObject {
         
         // Check if there's actual audio (not silence)
         let energy = samples.reduce(0) { $0 + abs($1) } / Float(samples.count)
-        guard energy > 0.001 else { return } // Skip if too quiet
+        guard energy > 0.001 else { return }
         
-        // Convert to Data
         let data = samples.withUnsafeBufferPointer { buffer in
             Data(buffer: buffer)
         }
         
-        // Callback to transcribe
         DispatchQueue.main.async { [weak self] in
             self?.onAudioReady?(data)
         }
     }
 }
 
-// MARK: - Audio Utilities
+// MARK: - Errors
+
+enum AudioRecorderError: Error {
+    case invalidInputFormat
+    case cannotCreateOutputFormat
+    case cannotCreateConverter
+}
+
+// MARK: - Utilities
 
 extension AudioRecorder {
     static func formatDuration(_ seconds: Int) -> String {

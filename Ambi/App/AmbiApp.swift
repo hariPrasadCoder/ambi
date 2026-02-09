@@ -102,15 +102,32 @@ class AppState: ObservableObject {
             isModelLoaded = await engine.isModelLoaded
         }
         
-        // Initialize audio recorder
-        audioRecorder = AudioRecorder { [weak self] audioData in
+        // Initialize audio recorder with callbacks
+        let recorder = AudioRecorder { [weak self] audioData in
             Task { @MainActor in
                 await self?.processAudio(audioData)
             }
         }
         
-        // Start recording
-        startRecording()
+        recorder.onRecordingStarted = { [weak self] in
+            Task { @MainActor in
+                self?.isRecording = true
+                self?.isPaused = false
+                print("AppState: Recording started")
+            }
+        }
+        
+        recorder.onPermissionDenied = { [weak self] in
+            Task { @MainActor in
+                self?.isRecording = false
+                print("AppState: Microphone permission denied")
+            }
+        }
+        
+        audioRecorder = recorder
+        
+        // Start recording (will check permission first)
+        recorder.startRecording()
         
         isLoading = false
     }
@@ -118,8 +135,7 @@ class AppState: ObservableObject {
     func startRecording() {
         guard !isRecording else { return }
         audioRecorder?.startRecording()
-        isRecording = true
-        isPaused = false
+        // isRecording will be set by the onRecordingStarted callback
     }
     
     func pauseRecording() {
