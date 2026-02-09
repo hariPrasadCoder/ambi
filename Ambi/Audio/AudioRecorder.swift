@@ -20,13 +20,26 @@ final class AudioRecorder: NSObject {
     }
     
     func startRecording() {
-        guard checkMicrophonePermission() else {
-            requestMicrophonePermission()
-            return
-        }
+        let status = AVCaptureDevice.authorizationStatus(for: .audio)
         
-        setupAudioEngine()
-        startTranscriptionTimer()
+        switch status {
+        case .authorized:
+            setupAudioEngine()
+            startTranscriptionTimer()
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+                if granted {
+                    DispatchQueue.main.async {
+                        self?.setupAudioEngine()
+                        self?.startTranscriptionTimer()
+                    }
+                }
+            }
+        case .denied, .restricted:
+            print("Microphone access denied. Please enable in System Settings > Privacy & Security > Microphone")
+        @unknown default:
+            break
+        }
     }
     
     func stopRecording() {
@@ -55,23 +68,11 @@ final class AudioRecorder: NSObject {
         bufferLock.unlock()
     }
     
-    private func checkMicrophonePermission() -> Bool {
-        AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-    }
-    
-    private func requestMicrophonePermission() {
-        AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
-            if granted {
-                DispatchQueue.main.async {
-                    self?.startRecording()
-                }
-            } else {
-                print("Microphone permission denied")
-            }
-        }
-    }
-    
     private func setupAudioEngine() {
+        // Don't setup if already running
+        if audioEngine?.isRunning == true {
+            return
+        }
         audioEngine = AVAudioEngine()
         guard let engine = audioEngine else { return }
         
