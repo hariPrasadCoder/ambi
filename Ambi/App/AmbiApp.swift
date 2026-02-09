@@ -343,9 +343,11 @@ class AppState: ObservableObject {
         Task {
             isModelLoaded = false
             isDownloadingModel = true
-            await transcriptionEngine?.loadModel(named: modelName) { progress in
+            loadingMessage = "Switching model..."
+            await transcriptionEngine?.loadModel(named: modelName) { progress, message in
                 Task { @MainActor in
                     self.modelDownloadProgress = progress
+                    self.loadingMessage = message
                 }
             }
             isDownloadingModel = false
