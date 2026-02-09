@@ -115,12 +115,12 @@ struct NotchHeader: View {
         .onAppear {
             startPulseAnimation()
         }
-        .onChange(of: appState.isRecording) { _, newValue in
+        .onChange(of: appState.isRecording) { newValue in
             if newValue && !appState.isPaused {
                 startPulseAnimation()
             }
         }
-        .onChange(of: appState.isPaused) { _, newValue in
+        .onChange(of: appState.isPaused) { newValue in
             if !newValue && appState.isRecording {
                 startPulseAnimation()
             }

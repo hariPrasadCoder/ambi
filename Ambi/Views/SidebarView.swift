@@ -109,12 +109,12 @@ struct RecordingStatusHeader: View {
                 startPulse()
             }
         }
-        .onChange(of: appState.isRecording) { _, newValue in
+        .onChange(of: appState.isRecording) { newValue in
             if newValue && !appState.isPaused {
                 startPulse()
             }
         }
-        .onChange(of: appState.isPaused) { _, newValue in
+        .onChange(of: appState.isPaused) { newValue in
             if !newValue && appState.isRecording {
                 startPulse()
             }

@@ -44,7 +44,7 @@ struct OnboardingView: View {
                     ModelStep()
                         .tag(2)
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
+                // Note: Using default tab style for macOS compatibility
                 
                 Spacer()
                 
@@ -182,7 +182,7 @@ struct FeatureRow: View {
         HStack(spacing: 16) {
             Image(systemName: icon)
                 .font(.title2)
-                .foregroundStyle(.ambiAccent)
+                .foregroundStyle(Color.ambiAccent)
                 .frame(width: 40)
             
             VStack(alignment: .leading, spacing: 2) {
@@ -365,7 +365,7 @@ struct ModelOption: View {
                 
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.title2)
-                    .foregroundStyle(isSelected ? .ambiAccent : .secondary)
+                    .foregroundStyle(isSelected ? Color.ambiAccent : Color.secondary)
             }
             .padding(16)
             .background(

@@ -38,12 +38,12 @@ struct GeneralSettings: View {
         Form {
             Section {
                 Toggle("Launch at login", isOn: $launchAtLogin)
-                    .onChange(of: launchAtLogin) { _, newValue in
+                    .onChange(of: launchAtLogin) { newValue in
                         setLaunchAtLogin(newValue)
                     }
                 
                 Toggle("Show in Dock", isOn: $showInDock)
-                    .onChange(of: showInDock) { _, newValue in
+                    .onChange(of: showInDock) { newValue in
                         setDockVisibility(newValue)
                     }
             } header: {

@@ -43,7 +43,7 @@ struct TranscriptionDetailView: View {
                     .padding(.horizontal, 24)
                     .padding(.vertical, 16)
                 }
-                .onChange(of: appState.transcriptions.count) { _, _ in
+                .onChange(of: appState.transcriptions.count) { _ in
                     // Scroll to latest
                     if let lastId = appState.transcriptions.last?.id {
                         withAnimation(.easeOut(duration: 0.3)) {
