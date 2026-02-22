@@ -274,7 +274,7 @@ struct PermissionStep: View {
                     HStack(spacing: 8) {
                         if isRequesting {
                             ProgressView()
-                                .scaleEffect(0.8)
+                                .controlSize(.small)
                         }
                         Text("Grant Access")
                             .font(.headline)

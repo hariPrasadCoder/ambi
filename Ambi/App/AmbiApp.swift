@@ -127,6 +127,9 @@ class AppState: ObservableObject {
     private var transcriptionEngine: TranscriptionEngine?
     private var databaseManager: DatabaseManager?
     private var dayChangeObserver: NSObjectProtocol?
+
+    // Meeting notes
+    let meetingSummarizer = MeetingSummarizer()
     
     private init() {
         needsOnboarding = !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
