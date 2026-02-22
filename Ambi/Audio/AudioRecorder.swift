@@ -18,6 +18,7 @@ class AudioRecorder: NSObject, ObservableObject {
     // Callbacks
     var onRecordingStarted: (() -> Void)?
     var onPermissionDenied: (() -> Void)?
+    var onAudioLevelChanged: ((Float) -> Void)?
     
     // Settings
     private let sampleRate: Double = 16000
@@ -154,6 +155,13 @@ class AudioRecorder: NSObject, ObservableObject {
         bufferLock.lock()
         audioBuffer.append(contentsOf: samples)
         bufferLock.unlock()
+
+        if !samples.isEmpty {
+            let rms = sqrt(samples.map { $0 * $0 }.reduce(0, +) / Float(samples.count))
+            DispatchQueue.main.async { [weak self] in
+                self?.onAudioLevelChanged?(min(rms * 10, 1.0))
+            }
+        }
     }
     
     private func startProcessingTimer() {
@@ -174,9 +182,10 @@ class AudioRecorder: NSObject, ObservableObject {
         guard !samples.isEmpty else { return }
         
         // Check if audio has actual content (not silence)
+        // Threshold lowered to 0.004 to catch quiet but real speech
         let rms = sqrt(samples.map { $0 * $0 }.reduce(0, +) / Float(samples.count))
-        guard rms > 0.01 else {
-            print("AudioRecorder: Audio too quiet, skipping")
+        guard rms > 0.004 else {
+            print("AudioRecorder: Audio too quiet (rms=\(String(format: "%.5f", rms))), skipping")
             return
         }
         

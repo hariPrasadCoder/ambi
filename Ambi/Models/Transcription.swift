@@ -7,6 +7,7 @@ struct Transcription: Identifiable, Codable, FetchableRecord, PersistableRecord,
     var text: String
     var timestamp: Date
     var duration: Int
+    var sourceApp: String?
     
     static var databaseTableName: String { "transcriptions" }
     

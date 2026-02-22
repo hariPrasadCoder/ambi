@@ -143,9 +143,9 @@ struct NotchHeader: View {
             return "Loading model..."
         }
         if !appState.isRecording {
-            return "Not recording"
+            return "Idle"
         }
-        return appState.isPaused ? "Paused" : "Recording"
+        return appState.isPaused ? "Paused" : "Taking notes"
     }
     
     private var modelDisplayName: String {

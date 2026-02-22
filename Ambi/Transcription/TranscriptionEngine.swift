@@ -6,8 +6,27 @@ actor TranscriptionEngine {
     private(set) var isModelLoaded = false
     private var currentModelName = ""
     private(set) var loadError: String?
-    
+    private var personalDictionary: [String: String] = [:]
+
     init() {}
+
+    func updateDictionary(_ map: [String: String]) {
+        personalDictionary = map
+    }
+
+    private func applyPersonalDictionary(_ text: String) -> String {
+        guard !personalDictionary.isEmpty else { return text }
+        var result = text
+        for (original, replacement) in personalDictionary {
+            guard let regex = try? NSRegularExpression(
+                pattern: "\\b\(NSRegularExpression.escapedPattern(for: original))\\b",
+                options: .caseInsensitive
+            ) else { continue }
+            let range = NSRange(result.startIndex..., in: result)
+            result = regex.stringByReplacingMatches(in: result, range: range, withTemplate: replacement)
+        }
+        return result
+    }
     
     func loadModel(named modelName: String = "base.en", progressCallback: ((Double, String) -> Void)? = nil) async {
         // Don't reload if same model
@@ -86,8 +105,9 @@ actor TranscriptionEngine {
             
             // Filter out common false positives
             let filtered = filterTranscription(text)
-            
-            return filtered.isEmpty ? nil : filtered
+            guard !filtered.isEmpty else { return nil }
+
+            return applyPersonalDictionary(filtered)
         } catch {
             print("TranscriptionEngine: Transcription error: \(error)")
             return nil
@@ -95,45 +115,40 @@ actor TranscriptionEngine {
     }
     
     private func filterTranscription(_ text: String) -> String {
-        // Common whisper hallucinations on silence
-        let falsePositives = [
-            "Thank you.",
-            "Thanks for watching.",
-            "Subscribe to my channel.",
-            "Like and subscribe.",
-            "See you in the next video.",
-            "Bye.",
-            "Thank you for watching.",
-            "[Music]",
+        // Whisper hallucinations that appear on silence/noise — exact-match only
+        let hallucinations: Set<String> = [
+            "thank you.",
+            "thanks for watching.",
+            "subscribe to my channel.",
+            "like and subscribe.",
+            "see you in the next video.",
+            "thank you for watching.",
+            "[music]",
             "(music)",
             "♪",
             "...",
-            "[BLANK_AUDIO]",
-            "[SILENCE]",
-            "you",
-            "You",
-            "I'm sorry.",
-            "Thanks.",
-            "Okay.",
-            "OK.",
-            "Uh",
-            "Um"
+            "[blank_audio]",
+            "[silence]",
+            "(silence)",
+            "[ silence ]",
+            "[ Silence ]",
         ]
-        
-        let lowered = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        for fp in falsePositives {
-            if lowered == fp.lowercased() {
-                return ""
-            }
-        }
-        
-        // Filter very short transcriptions
-        if text.count < 5 {
+
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowered = trimmed.lowercased()
+
+        // Drop exact hallucination matches
+        if hallucinations.contains(lowered) {
             return ""
         }
-        
-        return text
+
+        // Drop anything that is purely punctuation or whitespace
+        let meaningful = trimmed.filter { $0.isLetter || $0.isNumber }
+        if meaningful.count < 2 {
+            return ""
+        }
+
+        return trimmed
     }
     
     func getAvailableModels() -> [(id: String, name: String, size: String)] {
