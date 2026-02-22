@@ -35,7 +35,7 @@ struct SummaryModel: Identifiable, Equatable {
         ),
     ]
 
-    static let `default` = all[0]
+    static let `default` = all[1]  // Qwen 1.5B
 }
 
 // MARK: - Load State
@@ -63,21 +63,17 @@ final class LocalLLMManager: ObservableObject {
     @Published var selectedModel: SummaryModel
 
     private var container: ModelContainer?
+    private var unloadTask: Task<Void, Never>?
 
     private init() {
         let savedId = UserDefaults.standard.string(forKey: "selectedSummaryModel") ?? ""
-        selectedModel = SummaryModel.all.first { $0.id == savedId } ?? .default
-        // Auto-load if model files are already on disk
-        if isModelCached {
-            Task { await self.loadModel() }
+        // Migrate: SmolLM (old default) → Qwen 1.5B
+        let smolLMId = SummaryModel.all[0].id
+        let resolvedId = savedId == smolLMId ? SummaryModel.default.id : savedId
+        selectedModel = SummaryModel.all.first { $0.id == resolvedId } ?? .default
+        if resolvedId != savedId {
+            UserDefaults.standard.set(selectedModel.id, forKey: "selectedSummaryModel")
         }
-    }
-
-    /// Checks if the selected model's files exist in the MLX on-disk cache.
-    private var isModelCached: Bool {
-        guard let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return false }
-        let modelPath = cacheDir.appendingPathComponent("models/\(selectedModel.id)")
-        return FileManager.default.fileExists(atPath: modelPath.path)
     }
 
     // MARK: - Public API
@@ -86,11 +82,9 @@ final class LocalLLMManager: ObservableObject {
     func loadModel() async {
         guard !loadState.isBusy else { return }
         loadState = .downloading(progress: 0)
-
         do {
-            let config = selectedModel.modelConfiguration
             let result = try await LLMModelFactory.shared.loadContainer(
-                configuration: config
+                configuration: selectedModel.modelConfiguration
             ) { [weak self] progress in
                 Task { @MainActor in
                     self?.loadState = .downloading(progress: progress.fractionCompleted)
@@ -107,35 +101,59 @@ final class LocalLLMManager: ObservableObject {
     /// Switch to a different model, clearing the old one.
     func selectModel(_ model: SummaryModel) {
         guard model != selectedModel else { return }
+        unloadTask?.cancel()
         selectedModel = model
         container = nil
         loadState = .idle
         UserDefaults.standard.set(model.id, forKey: "selectedSummaryModel")
     }
 
-    /// Summarizes text, chunking long transcripts and merging results.
-    /// Returns nil when no model is loaded.
+    /// Loads model on demand, summarizes, then schedules unload after 30 s of inactivity.
     func summarize(text: String, category: MeetingCategory) async -> [String]? {
-        guard let container, loadState.isReady else { return nil }
+        // Cancel any pending unload — we need the model to stay alive
+        unloadTask?.cancel()
+        unloadTask = nil
 
+        // Load from disk if not already in memory
+        if !loadState.isReady {
+            await loadModel()
+            guard loadState.isReady else { return nil }
+        }
+        guard let container else { return nil }
+
+        let result = await runSummarization(text: text, category: category, container: container)
+
+        // Free RAM 30 s after the last summarization call
+        scheduleUnload()
+        return result
+    }
+
+    // MARK: - Unload
+
+    private func scheduleUnload() {
+        unloadTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 30_000_000_000)
+            guard !Task.isCancelled else { return }
+            self?.container = nil
+            self?.loadState = .idle
+        }
+    }
+
+    // MARK: - Chunked summarization
+
+    private func runSummarization(text: String, category: MeetingCategory, container: ModelContainer) async -> [String]? {
         let chunkSize = 3000
-
-        // Short text: single pass
         if text.count <= chunkSize {
             return await summarizeChunk(text, category: category, container: container)
         }
-
-        // Long text: chunk → summarize each → merge into final bullets
         let chunks = split(text, chunkSize: chunkSize)
         var allBullets: [String] = []
-        for chunk in chunks.prefix(8) {  // cap at ~24k chars / ~4000 words
+        for chunk in chunks.prefix(8) {
             if let bullets = await summarizeChunk(chunk, category: category, container: container) {
                 allBullets.append(contentsOf: bullets)
             }
         }
         guard !allBullets.isEmpty else { return nil }
-
-        // Merge pass: condense all chunk bullets into 5 final bullets
         let rawText = allBullets
             .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "• ")) }
             .joined(separator: ". ")
@@ -146,14 +164,25 @@ final class LocalLLMManager: ObservableObject {
     // MARK: - Private helpers
 
     private func summarizeChunk(_ text: String, category: MeetingCategory, container: ModelContainer) async -> [String]? {
-        let system = "You are a meeting notes assistant. Summarize the transcript into 3-5 concise bullet points covering key topics, decisions, and action items. Output ONLY lines starting with \"• \", nothing else."
-        let user = "Transcript (\(category.rawValue)):\n\(text)\n\nBullet points:"
-        return await generateBullets(system: system, user: user, container: container, maxTokens: 300)
+        let system = """
+        You are a note-taker for a \(category.rawValue.lowercased()). \
+        The transcript is from a voice recording of one or more people in conversation. \
+        Write 3-5 concise bullet points capturing what was discussed, decided, or needs follow-up. \
+        Rules: write in active voice ("Discussed X", "Decided to Y", "Need to Z"), \
+        be specific and direct, no repetition, never write "The user said" or refer to people in third person. \
+        Output ONLY bullet lines starting with "• ", nothing else.
+        """
+        let user = "Transcript:\n\(text)\n\nMeeting notes:"
+        return await generateBullets(system: system, user: user, container: container, maxTokens: 350)
     }
 
     private func mergeBullets(_ bullets: String, category: MeetingCategory, container: ModelContainer) async -> [String]? {
-        let system = "You are a meeting notes assistant. Condense these bullet points into exactly 5 final bullets, removing duplicates and keeping the most important information. Output ONLY lines starting with \"• \", nothing else."
-        let user = "Bullets from a \(category.rawValue):\n\(bullets)\n\nFinal 5 bullet points:"
+        let system = """
+        Condense these meeting notes into 5 final bullet points. \
+        Remove duplicates and near-duplicates. Keep the most specific and actionable points. \
+        Use active voice. Output ONLY bullet lines starting with "• ", nothing else.
+        """
+        let user = "Notes to condense:\n\(bullets)\n\nFinal 5 bullet points:"
         return await generateBullets(system: system, user: user, container: container, maxTokens: 400)
     }
 

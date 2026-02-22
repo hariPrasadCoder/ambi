@@ -25,10 +25,7 @@ struct TranscriptionDetailView: View {
             case .timeline:
                 timelineContent
             case .notes:
-                MeetingNotesView(
-                    transcriptions: appState.transcriptions,
-                    summarizer: AppState.shared.meetingSummarizer
-                )
+                MeetingNotesView(transcriptions: appState.transcriptions)
                 .background(Color(nsColor: .textBackgroundColor))
             }
         }
