@@ -14,40 +14,45 @@ actor TranscriptionEngine {
         if modelName == currentModelName && isModelLoaded {
             return
         }
-        
+
         currentModelName = modelName
         isModelLoaded = false
         loadError = nil
         whisperKit = nil
-        
+
         print("TranscriptionEngine: Loading model \(modelName)...")
-        progressCallback?(0.1, "Checking model...")
-        
+        progressCallback?(0.0, "Checking model...")
+
         do {
-            // Use verbose mode to see what's happening
-            progressCallback?(0.2, "Downloading model (this may take a few minutes)...")
-            
-            // Initialize WhisperKit with the model
-            // This will download if needed
-            whisperKit = try await WhisperKit(
-                model: modelName,
-                verbose: true,
-                logLevel: .debug,
-                prewarm: false,  // Don't prewarm initially
-                load: true,
-                download: true
+            // Step 1: Download model with real progress reporting (0% → 85%)
+            let modelFolder = try await WhisperKit.download(
+                variant: modelName,
+                progressCallback: { progress in
+                    let fraction = min(progress.fractionCompleted, 1.0)
+                    progressCallback?(fraction * 0.85, "Downloading model... \(Int(fraction * 100))%")
+                }
             )
-            
-            progressCallback?(0.8, "Warming up model...")
-            
-            // Prewarm after loading
+
+            // Step 2: Load model from the downloaded folder (85% → 95%)
+            progressCallback?(0.87, "Loading model...")
+            whisperKit = try await WhisperKit(
+                modelFolder: modelFolder.path,
+                verbose: false,
+                logLevel: .none,
+                prewarm: false,
+                load: true,
+                download: false
+            )
+
+            // Step 3: Prewarm for faster first transcription (95% → 100%)
+            progressCallback?(0.95, "Warming up model...")
             try await whisperKit?.prewarmModels()
-            
+
             isModelLoaded = true
             loadError = nil
             progressCallback?(1.0, "Ready!")
             print("TranscriptionEngine: Model \(modelName) loaded successfully")
-            
+
         } catch {
             let errorMsg = "Failed to load model: \(error.localizedDescription)"
             print("TranscriptionEngine: \(errorMsg)")

@@ -15,12 +15,7 @@ struct AmbiApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
-            CommandGroup(replacing: .newItem) {
-                Button("New Session") {
-                    appState.startNewSession()
-                }
-                .keyboardShortcut("n", modifiers: .command)
-            }
+            CommandGroup(replacing: .newItem) { }
         }
         
         Settings {
@@ -114,6 +109,7 @@ class AppState: ObservableObject {
     private var audioRecorder: AudioRecorder?
     private var transcriptionEngine: TranscriptionEngine?
     private var databaseManager: DatabaseManager?
+    private var dayChangeObserver: NSObjectProtocol?
     
     private init() {
         needsOnboarding = !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
@@ -126,12 +122,14 @@ class AppState: ObservableObject {
         // Initialize database
         databaseManager = try? DatabaseManager()
         
-        // Load sessions
+        // Load sessions and pre-select today's if it exists
         if let db = databaseManager {
             sessions = (try? db.fetchAllSessions()) ?? []
-            if let first = sessions.first {
-                selectedSession = first
-                transcriptions = (try? db.fetchTranscriptions(forSession: first.id!)) ?? []
+            let todaySession = sessions.first(where: { Calendar.current.isDateInToday($0.date) })
+            let sessionToSelect = todaySession ?? sessions.first
+            if let session = sessionToSelect {
+                selectedSession = session
+                transcriptions = (try? db.fetchTranscriptions(forSession: session.id!)) ?? []
             }
         }
         
@@ -196,6 +194,44 @@ class AppState: ObservableObject {
         
         // Auto-start recording
         startRecording()
+
+        // Eagerly create today's session so it appears in the sidebar immediately,
+        // even before the first transcription is saved.
+        if let db = databaseManager,
+           let todaySession = try? db.getOrCreateTodaySession() {
+            sessions = (try? db.fetchAllSessions()) ?? []
+            selectedSession = todaySession
+            transcriptions = (try? db.fetchTranscriptions(forSession: todaySession.id!)) ?? []
+        }
+
+        // Watch for midnight day change to open a new session automatically
+        setupDayChangeObserver()
+    }
+
+    private func setupDayChangeObserver() {
+        dayChangeObserver = NotificationCenter.default.addObserver(
+            forName: .NSCalendarDayChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleDayChange()
+            }
+        }
+    }
+
+    private func handleDayChange() {
+        guard let db = databaseManager else { return }
+        do {
+            let newSession = try db.getOrCreateTodaySession()
+            sessions = (try? db.fetchAllSessions()) ?? []
+            selectedSession = newSession
+            transcriptions = []
+            liveTranscript = ""
+            currentTranscription = ""
+        } catch {
+            print("Failed to create session for new day: \(error)")
+        }
     }
     
     func completeOnboarding() {
@@ -364,6 +400,9 @@ class AppState: ObservableObject {
     
     func cleanup() {
         stopRecording()
+        if let observer = dayChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 }
 
