@@ -268,8 +268,7 @@ struct QuickActionsView: View {
                 title: "Settings...",
                 shortcut: "⌘,"
             ) {
-                NSApp.activate(ignoringOtherApps: true)
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                SettingsWindowManager.shared.open(appState: appState)
             }
 
             Divider().padding(.horizontal, 4)

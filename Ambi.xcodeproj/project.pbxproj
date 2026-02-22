@@ -33,6 +33,7 @@
 		8301000000000019 /* MeetingSummarizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8300000000000019 /* MeetingSummarizer.swift */; };
 		830100000000001A /* MeetingNotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830000000000001A /* MeetingNotesView.swift */; };
 		830100000000001B /* LocalLLMEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830000000000001B /* LocalLLMEngine.swift */; };
+		830100000000001E /* SettingsWindowManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830000000000001E /* SettingsWindowManager.swift */; };
 		830100000000001C /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 830200000000001C /* MLXLLM */; };
 		830100000000001D /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 830200000000001D /* MLXLMCommon */; };
 /* End PBXBuildFile section */
@@ -65,6 +66,7 @@
 		8300000000000019 /* MeetingSummarizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSummarizer.swift; sourceTree = "<group>"; };
 		830000000000001A /* MeetingNotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingNotesView.swift; sourceTree = "<group>"; };
 		830000000000001B /* LocalLLMEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMEngine.swift; sourceTree = "<group>"; };
+		830000000000001E /* SettingsWindowManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -167,6 +169,7 @@
 				8300000000000014 /* PersonalDictionaryView.swift */,
 				8300000000000015 /* MetricsView.swift */,
 				830000000000001A /* MeetingNotesView.swift */,
+				830000000000001E /* SettingsWindowManager.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -298,6 +301,7 @@
 				8301000000000019 /* MeetingSummarizer.swift in Sources */,
 				830100000000001A /* MeetingNotesView.swift in Sources */,
 				830100000000001B /* LocalLLMEngine.swift in Sources */,
+				830100000000001E /* SettingsWindowManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

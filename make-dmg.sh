@@ -127,6 +127,7 @@ fi
 
 sync
 hdiutil detach "$MOUNT_DIR"
+sleep 2
 
 # Compress to final DMG
 hdiutil convert temp.dmg -format UDZO -imagekey zlib-level=9 -ov -o "${DMG_NAME}.dmg"

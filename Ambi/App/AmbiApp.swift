@@ -23,11 +23,12 @@ struct AmbiApp: App {
                 }
                 .keyboardShortcut("q")
             }
-        }
-        
-        Settings {
-            SettingsView()
-                .environmentObject(appState)
+            CommandGroup(after: .appInfo) {
+                Button("Settings...") {
+                    SettingsWindowManager.shared.open(appState: AppState.shared)
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
         }
         
         MenuBarExtra {
