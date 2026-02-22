@@ -268,8 +268,17 @@ struct QuickActionsView: View {
                 title: "Settings...",
                 shortcut: "⌘,"
             ) {
-                NSApp.activate(ignoringOtherApps: true)
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                SettingsWindowManager.shared.open(appState: appState)
+            }
+
+            Divider().padding(.horizontal, 4)
+
+            MenuRowButton(
+                icon: "power",
+                title: "Quit Ambi",
+                shortcut: "⌘Q"
+            ) {
+                NSApplication.shared.terminate(nil)
             }
         }
         .padding(.horizontal, 8)

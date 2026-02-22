@@ -15,6 +15,16 @@ struct MainView: View {
                 EmptyStateView()
             }
         }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    SettingsWindowManager.shared.open(appState: appState)
+                } label: {
+                    Image(systemName: "gear")
+                }
+                .help("Settings")
+            }
+        }
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay {
             if appState.isLoading {
