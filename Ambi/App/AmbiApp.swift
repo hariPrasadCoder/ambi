@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import ServiceManagement
 
 @main
 struct AmbiApp: App {
@@ -16,6 +17,12 @@ struct AmbiApp: App {
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
             CommandGroup(replacing: .newItem) { }
+            CommandGroup(replacing: .appTermination) {
+                Button("Quit Ambi") {
+                    NSApplication.shared.terminate(nil)
+                }
+                .keyboardShortcut("q")
+            }
         }
         
         Settings {
@@ -27,16 +34,16 @@ struct AmbiApp: App {
             MenuBarView()
                 .environmentObject(appState)
         } label: {
-            HStack(spacing: 3) {
+            HStack(spacing: 4) {
                 Image(systemName: appState.isRecording
                       ? (appState.isPaused ? "mic.slash.fill" : "mic.fill")
-                      : "mic.slash")
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(appState.isRecording && !appState.isPaused ? .primary : .secondary)
+                      : "mic.slash.fill")
+                    .symbolRenderingMode(.monochrome)
 
                 if appState.isRecording && !appState.isPaused {
-                    Text("Notes")
-                        .font(.system(size: 11, weight: .medium))
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 5, height: 5)
                 }
             }
         }
@@ -264,6 +271,8 @@ class AppState: ObservableObject {
     func completeOnboarding() {
         UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
         needsOnboarding = false
+        // Auto-register for launch at login so Ambi is always ready
+        try? SMAppService.mainApp.register()
         Task {
             await startServices()
         }

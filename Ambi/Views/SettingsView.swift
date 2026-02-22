@@ -46,7 +46,7 @@ struct SettingsView: View {
 // MARK: - General Settings
 
 struct GeneralSettings: View {
-    @AppStorage("launchAtLogin") private var launchAtLogin = false
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @AppStorage("showInDock") private var showInDock = false
     @AppStorage("audioFeedbackEnabled") private var audioFeedbackEnabled = true
 
@@ -64,6 +64,10 @@ struct GeneralSettings: View {
                     }
             } header: {
                 Text("Startup")
+            }
+            .onAppear {
+                // Sync with actual system state (user may have changed it in System Settings)
+                launchAtLogin = SMAppService.mainApp.status == .enabled
             }
 
             Section {
@@ -104,6 +108,8 @@ struct GeneralSettings: View {
             }
         } catch {
             print("Failed to set launch at login: \(error)")
+            // Revert toggle to reflect actual state
+            launchAtLogin = SMAppService.mainApp.status == .enabled
         }
     }
     
