@@ -21,13 +21,19 @@ struct OnboardingView: View {
             
             VStack(spacing: 0) {
                 // Progress indicator
-                HStack(spacing: 8) {
-                    ForEach(0..<3) { step in
-                        Capsule()
-                            .fill(step <= currentStep ? Color.ambiAccent : Color.white.opacity(0.2))
-                            .frame(width: step == currentStep ? 24 : 8, height: 8)
-                            .animation(.spring(response: 0.3), value: currentStep)
+                VStack(spacing: 6) {
+                    HStack(spacing: 8) {
+                        ForEach(0..<3) { step in
+                            Capsule()
+                                .fill(step <= currentStep ? Color.ambiAccent : Color.white.opacity(0.2))
+                                .frame(width: step == currentStep ? 24 : 8, height: 8)
+                                .animation(.spring(response: 0.3), value: currentStep)
+                        }
                     }
+                    Text(["Welcome", "Permissions", "Model"][currentStep])
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .animation(.easeOut, value: currentStep)
                 }
                 .padding(.top, 40)
                 
@@ -56,16 +62,16 @@ struct OnboardingView: View {
                                 .font(.headline)
                                 .foregroundStyle(.secondary)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(ScaleButtonStyle())
                     }
-                    
+
                     Spacer()
-                    
+
                     Button(action: nextStep) {
                         HStack(spacing: 8) {
                             Text(currentStep == 2 ? "Get Started" : "Continue")
                                 .font(.headline)
-                            
+
                             Image(systemName: "arrow.right")
                                 .font(.headline)
                         }
@@ -83,7 +89,7 @@ struct OnboardingView: View {
                                 )
                         )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(ScaleButtonStyle())
                     .disabled(currentStep == 1 && !appState.hasMicrophonePermission)
                     .opacity(currentStep == 1 && !appState.hasMicrophonePermission ? 0.5 : 1)
                 }
@@ -108,11 +114,29 @@ struct OnboardingView: View {
 
 struct WelcomeStep: View {
     @State private var isAnimating = false
-    
+    @State private var visibleFeatures = 0
+
+    private let features: [(icon: String, title: String, description: String)] = [
+        ("mic.fill", "Always-on Recording", "Runs quietly in your menu bar"),
+        ("cpu", "Local AI", "Whisper transcription, 100% private"),
+        ("magnifyingglass", "Searchable", "Find any conversation instantly")
+    ]
+
     var body: some View {
         VStack(spacing: 32) {
             // Animated logo
             ZStack {
+                // Second outer ring (new)
+                Circle()
+                    .stroke(Color.ambiGradientEnd.opacity(0.3), lineWidth: 1)
+                    .frame(width: 200, height: 200)
+                    .scaleEffect(isAnimating ? 1.15 : 0.9)
+                    .opacity(isAnimating ? 0.2 : 0.6)
+                    .animation(
+                        .easeInOut(duration: 2.5).repeatForever(autoreverses: true).delay(0.6),
+                        value: isAnimating
+                    )
+
                 // Outer ring
                 Circle()
                     .stroke(
@@ -126,7 +150,8 @@ struct WelcomeStep: View {
                     .frame(width: 160, height: 160)
                     .scaleEffect(isAnimating ? 1.1 : 1.0)
                     .opacity(isAnimating ? 0.5 : 1.0)
-                
+                    .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: isAnimating)
+
                 // Inner circle
                 Circle()
                     .fill(
@@ -137,35 +162,48 @@ struct WelcomeStep: View {
                         )
                     )
                     .frame(width: 120, height: 120)
-                
+
                 // Waveform icon
                 Image(systemName: "waveform")
                     .font(.system(size: 48, weight: .semibold))
                     .foregroundStyle(.white)
             }
             .onAppear {
-                withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
-                    isAnimating = true
+                isAnimating = true
+                // Stagger feature rows
+                for i in 0..<3 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.25 + 0.4) {
+                        withAnimation(.easeOut(duration: 0.4)) {
+                            visibleFeatures = i + 1
+                        }
+                    }
                 }
             }
-            
+
             VStack(spacing: 16) {
                 Text("Welcome to Ambi")
                     .font(.system(size: 36, weight: .bold))
                     .foregroundStyle(.white)
-                
+
                 Text("Your personal ambient voice recorder.\nCapture every conversation, transcribed locally with AI.")
                     .font(.title3)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(4)
             }
-            
-            // Features
+
+            // Staggered feature rows
             VStack(alignment: .leading, spacing: 16) {
-                FeatureRow(icon: "mic.fill", title: "Always-on Recording", description: "Runs quietly in your menu bar")
-                FeatureRow(icon: "cpu", title: "Local AI", description: "Whisper transcription, 100% private")
-                FeatureRow(icon: "magnifyingglass", title: "Searchable", description: "Find any conversation instantly")
+                ForEach(features.indices, id: \.self) { i in
+                    if i < visibleFeatures {
+                        FeatureRow(
+                            icon: features[i].icon,
+                            title: features[i].title,
+                            description: features[i].description
+                        )
+                        .transition(.opacity.combined(with: .move(edge: .leading)))
+                    }
+                }
             }
             .padding(.top, 20)
         }
@@ -236,7 +274,7 @@ struct PermissionStep: View {
                     HStack(spacing: 8) {
                         if isRequesting {
                             ProgressView()
-                                .scaleEffect(0.8)
+                                .controlSize(.small)
                         }
                         Text("Grant Access")
                             .font(.headline)
@@ -378,6 +416,16 @@ struct ModelOption: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Scale Button Style
+
+struct ScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
     }
 }
 

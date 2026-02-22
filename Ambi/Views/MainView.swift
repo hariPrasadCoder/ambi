@@ -15,6 +15,16 @@ struct MainView: View {
                 EmptyStateView()
             }
         }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    SettingsWindowManager.shared.open(appState: appState)
+                } label: {
+                    Image(systemName: "gear")
+                }
+                .help("Settings")
+            }
+        }
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay {
             if appState.isLoading {
@@ -67,21 +77,21 @@ struct EmptyStateView: View {
 
 struct RecordingIndicatorBadge: View {
     @State private var isAnimating = false
-    
+
     var body: some View {
         HStack(spacing: 8) {
             Circle()
-                .fill(.red)
+                .fill(.green)
                 .frame(width: 8, height: 8)
                 .scaleEffect(isAnimating ? 1.2 : 1.0)
-            
-            Text("Recording...")
+
+            Text("Taking notes...")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Capsule().fill(Color.red.opacity(0.1)))
+        .background(Capsule().fill(Color.green.opacity(0.1)))
         .onAppear {
             withAnimation(.easeInOut(duration: 0.8).repeatForever()) {
                 isAnimating = true

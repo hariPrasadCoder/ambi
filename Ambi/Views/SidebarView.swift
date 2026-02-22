@@ -33,10 +33,17 @@ struct SidebarView: View {
     }
     
     private var filteredSessions: [Session] {
+        let base: [Session]
         if appState.searchQuery.isEmpty {
-            return appState.sessions
+            // Hide empty sessions from the past; always show today's session
+            // (even if empty, so the live transcript is accessible while recording)
+            base = appState.sessions.filter {
+                $0.transcriptionCount > 0 || Calendar.current.isDateInToday($0.date)
+            }
+        } else {
+            base = appState.searchTranscriptions()
         }
-        return appState.searchTranscriptions()
+        return base
     }
     
     private func deleteSession(at offsets: IndexSet) {
@@ -84,24 +91,16 @@ struct RecordingStatusHeader: View {
             }
             
             // Controls
-            HStack(spacing: 12) {
-                Button(action: { appState.toggleRecording() }) {
-                    Label(
-                        appState.isPaused ? "Resume" : (appState.isRecording ? "Pause" : "Record"),
-                        systemImage: appState.isPaused ? "play.fill" : (appState.isRecording ? "pause.fill" : "record.circle")
-                    )
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(appState.isRecording && !appState.isPaused ? .orange : .green)
-                .disabled(!appState.isModelLoaded)
-                
-                Button(action: { appState.startNewSession() }) {
-                    Image(systemName: "plus")
-                }
-                .buttonStyle(.bordered)
-                .help("New Session")
+            Button(action: { appState.toggleRecording() }) {
+                Label(
+                    appState.isPaused ? "Resume" : (appState.isRecording ? "Pause" : "Record"),
+                    systemImage: appState.isPaused ? "play.fill" : (appState.isRecording ? "pause.fill" : "record.circle")
+                )
+                .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.borderedProminent)
+            .tint(appState.isRecording && !appState.isPaused ? .orange : .green)
+            .disabled(!appState.isModelLoaded)
         }
         .padding()
         .onAppear {

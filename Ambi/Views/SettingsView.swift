@@ -8,32 +8,48 @@ struct SettingsView: View {
                 .tabItem {
                     Label("General", systemImage: "gear")
                 }
-            
+
             TranscriptionSettings()
                 .tabItem {
                     Label("Transcription", systemImage: "waveform")
                 }
-            
+
+            PersonalDictionaryView()
+                .tabItem {
+                    Label("Dictionary", systemImage: "character.book.closed")
+                }
+
+            SummarizationSettings()
+                .tabItem {
+                    Label("Summaries", systemImage: "text.badge.star")
+                }
+
+            MetricsView()
+                .tabItem {
+                    Label("Metrics", systemImage: "chart.bar.fill")
+                }
+
             StorageSettings()
                 .tabItem {
                     Label("Storage", systemImage: "internaldrive")
                 }
-            
+
             AboutView()
                 .tabItem {
                     Label("About", systemImage: "info.circle")
                 }
         }
-        .frame(width: 550, height: 450)
+        .frame(width: 550, height: 520)
     }
 }
 
 // MARK: - General Settings
 
 struct GeneralSettings: View {
-    @AppStorage("launchAtLogin") private var launchAtLogin = false
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @AppStorage("showInDock") private var showInDock = false
-    
+    @AppStorage("audioFeedbackEnabled") private var audioFeedbackEnabled = true
+
     var body: some View {
         Form {
             Section {
@@ -41,7 +57,7 @@ struct GeneralSettings: View {
                     .onChange(of: launchAtLogin) { newValue in
                         setLaunchAtLogin(newValue)
                     }
-                
+
                 Toggle("Show in Dock", isOn: $showInDock)
                     .onChange(of: showInDock) { newValue in
                         setDockVisibility(newValue)
@@ -49,7 +65,19 @@ struct GeneralSettings: View {
             } header: {
                 Text("Startup")
             }
-            
+            .onAppear {
+                // Sync with actual system state (user may have changed it in System Settings)
+                launchAtLogin = SMAppService.mainApp.status == .enabled
+            }
+
+            Section {
+                Toggle("Audio Feedback", isOn: $audioFeedbackEnabled)
+            } header: {
+                Text("Feedback")
+            } footer: {
+                Text("Plays subtle sounds when note-taking starts, pauses, and saves.")
+            }
+
             Section {
                 HStack {
                     Text("Microphone")
@@ -80,6 +108,8 @@ struct GeneralSettings: View {
             }
         } catch {
             print("Failed to set launch at login: \(error)")
+            // Revert toggle to reflect actual state
+            launchAtLogin = SMAppService.mainApp.status == .enabled
         }
     }
     
@@ -314,6 +344,103 @@ struct AboutView: View {
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+}
+
+// MARK: - Summarization Settings
+
+struct SummarizationSettings: View {
+    @AppStorage("summarizationMode") private var storedMode = SummarizationMode.localLLM.rawValue
+    @ObservedObject private var llmManager = LocalLLMManager.shared
+
+    var body: some View {
+        Form {
+            // ── Local AI model picker ──────────────────────────────────
+            Section {
+                ForEach(SummaryModel.all) { model in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(model.displayName).font(.headline)
+                            HStack(spacing: 8) {
+                                Text(model.size)
+                                    .font(.caption).foregroundStyle(.secondary)
+                                Text(model.quality).font(.caption)
+                            }
+                        }
+
+                        Spacer()
+
+                        modelRowTrailing(model)
+                    }
+                    .padding(.vertical, 4)
+                }
+            } header: {
+                Text("AI Model")
+            } footer: {
+                Text("Downloads a small open-source LLM and runs it 100% on your Mac — same as Whisper. Stored in ~/Library/Caches/huggingface/.")
+            }
+
+            // ── Meeting detection info ─────────────────────────────────
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("How meeting detection works", systemImage: "info.circle")
+                        .font(.caption).fontWeight(.medium)
+                    Text("• 30-minute gap → always a new meeting\n• 5-minute gap + app switch → new meeting\n• App context (Zoom, Xcode, Safari…) sets the category")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("About Meeting Detection")
+            }
+        }
+        .formStyle(.grouped)
+        .padding()
+    }
+
+    @ViewBuilder
+    private func modelRowTrailing(_ model: SummaryModel) -> some View {
+        let isSelected = llmManager.selectedModel == model
+
+        if isSelected {
+            switch llmManager.loadState {
+            case .idle:
+                Button("Download") {
+                    Task { await llmManager.loadModel() }
+                }
+                .buttonStyle(.borderedProminent)
+
+            case .downloading(let p):
+                VStack(alignment: .trailing, spacing: 4) {
+                    ProgressView(value: p)
+                        .frame(width: 80)
+                    Text("\(Int(p * 100))%")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+
+            case .loading:
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Loading…").font(.caption).foregroundStyle(.secondary)
+                }
+
+            case .ready:
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+
+            case .error(let msg):
+                VStack(alignment: .trailing, spacing: 2) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    Text(msg).font(.caption2).foregroundStyle(.secondary)
+                    Button("Retry") { Task { await llmManager.loadModel() } }
+                        .buttonStyle(.bordered)
+                }
+            }
+        } else {
+            Button("Select") {
+                llmManager.selectModel(model)
+            }
+            .buttonStyle(.bordered)
+        }
+    }
+
+
 }
 
 #Preview {

@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import ServiceManagement
 
 @main
 struct AmbiApp: App {
@@ -15,17 +16,19 @@ struct AmbiApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
-            CommandGroup(replacing: .newItem) {
-                Button("New Session") {
-                    appState.startNewSession()
+            CommandGroup(replacing: .newItem) { }
+            CommandGroup(replacing: .appTermination) {
+                Button("Quit Ambi") {
+                    NSApplication.shared.terminate(nil)
                 }
-                .keyboardShortcut("n", modifiers: .command)
+                .keyboardShortcut("q")
             }
-        }
-        
-        Settings {
-            SettingsView()
-                .environmentObject(appState)
+            CommandGroup(after: .appInfo) {
+                Button("Settings...") {
+                    SettingsWindowManager.shared.open(appState: AppState.shared)
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
         }
         
         MenuBarExtra {
@@ -33,9 +36,16 @@ struct AmbiApp: App {
                 .environmentObject(appState)
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: appState.isRecording ? (appState.isPaused ? "mic.slash.fill" : "mic.fill") : "mic.slash")
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(appState.isRecording && !appState.isPaused ? .red : .secondary)
+                Image(systemName: appState.isRecording
+                      ? (appState.isPaused ? "mic.slash.fill" : "mic.fill")
+                      : "mic.slash.fill")
+                    .symbolRenderingMode(.monochrome)
+
+                if appState.isRecording && !appState.isPaused {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 5, height: 5)
+                }
             }
         }
         .menuBarExtraStyle(.window)
@@ -44,6 +54,12 @@ struct AmbiApp: App {
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Register UserDefaults defaults so toggles start enabled
+        UserDefaults.standard.register(defaults: [
+            "audioFeedbackEnabled": true,
+            "showFloatingIndicator": true
+        ])
+        AmbiShortcuts.updateAppShortcutParameters()
         Task {
             await AppState.shared.initialize()
         }
@@ -109,12 +125,17 @@ class AppState: ObservableObject {
     // Onboarding
     @Published var needsOnboarding: Bool
     @Published var hasMicrophonePermission = false
-    
+
+    // New feature state
+    @Published var dictionaryEntries: [DictionaryEntry] = []
+    @Published var currentAudioLevel: Float = 0
+
     // Components
     private var audioRecorder: AudioRecorder?
     private var transcriptionEngine: TranscriptionEngine?
     private var databaseManager: DatabaseManager?
-    
+    private var dayChangeObserver: NSObjectProtocol?
+
     private init() {
         needsOnboarding = !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
     }
@@ -126,12 +147,14 @@ class AppState: ObservableObject {
         // Initialize database
         databaseManager = try? DatabaseManager()
         
-        // Load sessions
+        // Load sessions and pre-select today's if it exists
         if let db = databaseManager {
             sessions = (try? db.fetchAllSessions()) ?? []
-            if let first = sessions.first {
-                selectedSession = first
-                transcriptions = (try? db.fetchTranscriptions(forSession: first.id!)) ?? []
+            let todaySession = sessions.first(where: { Calendar.current.isDateInToday($0.date) })
+            let sessionToSelect = todaySession ?? sessions.first
+            if let session = sessionToSelect {
+                selectedSession = session
+                transcriptions = (try? db.fetchTranscriptions(forSession: session.id!)) ?? []
             }
         }
         
@@ -170,37 +193,87 @@ class AppState: ObservableObject {
             }
         }
         
-        // Initialize audio recorder
-        let recorder = AudioRecorder { [weak self] audioData in
+        // Initialize audio recorder (with persisted interval setting)
+        let interval = UserDefaults.standard.double(forKey: "transcriptionInterval")
+        let recorder = AudioRecorder(processingInterval: interval > 0 ? interval : 30) { [weak self] audioData in
             Task { @MainActor in
                 await self?.processAudio(audioData)
             }
         }
-        
+
+        recorder.onAudioLevelChanged = { [weak self] level in
+            Task { @MainActor in self?.currentAudioLevel = level }
+        }
+
         recorder.onRecordingStarted = { [weak self] in
             Task { @MainActor in
                 self?.isRecording = true
                 self?.isPaused = false
+                SoundManager.shared.play(.recordingStarted)
             }
         }
-        
+
         recorder.onPermissionDenied = { [weak self] in
             Task { @MainActor in
                 self?.isRecording = false
                 self?.hasMicrophonePermission = false
             }
         }
-        
+
         audioRecorder = recorder
         isLoading = false
+
+        // Load personal dictionary into engine
+        refreshDictionaryInEngine()
         
         // Auto-start recording
         startRecording()
+
+        // Eagerly create today's session so it appears in the sidebar immediately,
+        // even before the first transcription is saved.
+        if let db = databaseManager,
+           let todaySession = try? db.getOrCreateTodaySession() {
+            sessions = (try? db.fetchAllSessions()) ?? []
+            selectedSession = todaySession
+            transcriptions = (try? db.fetchTranscriptions(forSession: todaySession.id!)) ?? []
+        }
+
+        // Watch for midnight day change to open a new session automatically
+        setupDayChangeObserver()
+    }
+
+    private func setupDayChangeObserver() {
+        dayChangeObserver = NotificationCenter.default.addObserver(
+            forName: .NSCalendarDayChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleDayChange()
+            }
+        }
+    }
+
+    private func handleDayChange() {
+        guard let db = databaseManager else { return }
+        do {
+            let newSession = try db.getOrCreateTodaySession()
+            sessions = (try? db.fetchAllSessions()) ?? []
+            selectedSession = newSession
+            transcriptions = []
+            liveTranscript = ""
+            currentTranscription = ""
+            SoundManager.shared.play(.sessionCreated)
+        } catch {
+            print("Failed to create session for new day: \(error)")
+        }
     }
     
     func completeOnboarding() {
         UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
         needsOnboarding = false
+        // Auto-register for launch at login so Ambi is always ready
+        try? SMAppService.mainApp.register()
         Task {
             await startServices()
         }
@@ -225,19 +298,21 @@ class AppState: ObservableObject {
     func pauseRecording() {
         audioRecorder?.pauseRecording()
         isPaused = true
-        
+        SoundManager.shared.play(.recordingPaused)
+
         // Show accumulated transcript immediately
         if !liveTranscript.isEmpty {
             currentTranscription = liveTranscript
         }
     }
-    
+
     func resumeRecording() {
         audioRecorder?.resumeRecording()
         isPaused = false
         liveTranscript = ""
+        SoundManager.shared.play(.recordingResumed)
     }
-    
+
     func stopRecording() {
         audioRecorder?.stopRecording()
         isRecording = false
@@ -288,23 +363,26 @@ class AppState: ObservableObject {
     
     private func saveTranscription(_ text: String) async {
         guard let db = databaseManager else { return }
-        
+
         do {
             let session = try db.getOrCreateTodaySession()
-            
+            let frontmostApp = NSWorkspace.shared.frontmostApplication?.localizedName
+
             let transcription = Transcription(
                 id: nil,
                 sessionId: session.id!,
                 text: text,
                 timestamp: Date(),
-                duration: 30
+                duration: 30,
+                sourceApp: frontmostApp
             )
-            
+
             try db.insertTranscription(transcription)
-            
+            SoundManager.shared.play(.transcriptionSaved)
+
             // Refresh data
             sessions = try db.fetchAllSessions()
-            
+
             if selectedSession?.id == session.id {
                 transcriptions = try db.fetchTranscriptions(forSession: session.id!)
                 selectedSession = try db.fetchSession(id: session.id!)
@@ -362,8 +440,42 @@ class AppState: ObservableObject {
         return (try? db.searchSessions(query: searchQuery)) ?? []
     }
     
+    // MARK: - Dictionary Management
+
+    func addDictionaryEntry(original: String, replacement: String) {
+        guard let db = databaseManager, !original.isEmpty, !replacement.isEmpty else { return }
+        let entry = DictionaryEntry(
+            id: nil,
+            original: original.lowercased().trimmingCharacters(in: .whitespaces),
+            replacement: replacement.trimmingCharacters(in: .whitespaces),
+            createdAt: Date()
+        )
+        try? db.insertDictionaryEntry(entry)
+        dictionaryEntries = (try? db.fetchDictionaryEntries()) ?? []
+        refreshDictionaryInEngine()
+    }
+
+    func removeDictionaryEntry(_ entry: DictionaryEntry) {
+        guard let db = databaseManager, let id = entry.id else { return }
+        try? db.deleteDictionaryEntry(id)
+        dictionaryEntries = (try? db.fetchDictionaryEntries()) ?? []
+        refreshDictionaryInEngine()
+    }
+
+    private func refreshDictionaryInEngine() {
+        guard let db = databaseManager, let engine = transcriptionEngine else { return }
+        dictionaryEntries = (try? db.fetchDictionaryEntries()) ?? []
+        let map = (try? db.fetchDictionaryMap()) ?? [:]
+        Task {
+            await engine.updateDictionary(map)
+        }
+    }
+
     func cleanup() {
         stopRecording()
+        if let observer = dayChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 }
 

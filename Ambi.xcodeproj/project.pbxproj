@@ -22,6 +22,20 @@
 		830100000000000F /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830000000000000F /* OnboardingView.swift */; };
 		830100000000000D /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 830200000000000D /* GRDB */; };
 		830100000000000E /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 830200000000000E /* WhisperKit */; };
+		8301000000000010 /* DictionaryEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8300000000000010 /* DictionaryEntry.swift */; };
+		8301000000000011 /* SoundManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8300000000000011 /* SoundManager.swift */; };
+		8301000000000012 /* TextProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8300000000000012 /* TextProcessor.swift */; };
+		8301000000000014 /* PersonalDictionaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8300000000000014 /* PersonalDictionaryView.swift */; };
+		8301000000000015 /* MetricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8300000000000015 /* MetricsView.swift */; };
+		8301000000000016 /* AmbiIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8300000000000016 /* AmbiIntents.swift */; };
+		8301000000000017 /* Meeting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8300000000000017 /* Meeting.swift */; };
+		8301000000000018 /* MeetingSegmenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8300000000000018 /* MeetingSegmenter.swift */; };
+		8301000000000019 /* MeetingSummarizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8300000000000019 /* MeetingSummarizer.swift */; };
+		830100000000001A /* MeetingNotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830000000000001A /* MeetingNotesView.swift */; };
+		830100000000001B /* LocalLLMEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830000000000001B /* LocalLLMEngine.swift */; };
+		830100000000001E /* SettingsWindowManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830000000000001E /* SettingsWindowManager.swift */; };
+		830100000000001C /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 830200000000001C /* MLXLLM */; };
+		830100000000001D /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 830200000000001D /* MLXLMCommon */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -41,6 +55,18 @@
 		830000000000000D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		830000000000000E /* Ambi.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Ambi.entitlements; sourceTree = "<group>"; };
 		830000000000000F /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		8300000000000010 /* DictionaryEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryEntry.swift; sourceTree = "<group>"; };
+		8300000000000011 /* SoundManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoundManager.swift; sourceTree = "<group>"; };
+		8300000000000012 /* TextProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextProcessor.swift; sourceTree = "<group>"; };
+		8300000000000014 /* PersonalDictionaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalDictionaryView.swift; sourceTree = "<group>"; };
+		8300000000000015 /* MetricsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricsView.swift; sourceTree = "<group>"; };
+		8300000000000016 /* AmbiIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbiIntents.swift; sourceTree = "<group>"; };
+		8300000000000017 /* Meeting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Meeting.swift; sourceTree = "<group>"; };
+		8300000000000018 /* MeetingSegmenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSegmenter.swift; sourceTree = "<group>"; };
+		8300000000000019 /* MeetingSummarizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSummarizer.swift; sourceTree = "<group>"; };
+		830000000000001A /* MeetingNotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingNotesView.swift; sourceTree = "<group>"; };
+		830000000000001B /* LocalLLMEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMEngine.swift; sourceTree = "<group>"; };
+		830000000000001E /* SettingsWindowManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -50,6 +76,8 @@
 			files = (
 				830100000000000D /* GRDB in Frameworks */,
 				830100000000000E /* WhisperKit in Frameworks */,
+				830100000000001C /* MLXLLM in Frameworks */,
+				830100000000001D /* MLXLMCommon in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -73,6 +101,7 @@
 				8304000000000005 /* Audio */,
 				8304000000000006 /* Transcription */,
 				8304000000000007 /* Views */,
+				8304000000000009 /* Intents */,
 				8304000000000008 /* Resources */,
 				830000000000000D /* Info.plist */,
 				830000000000000E /* Ambi.entitlements */,
@@ -93,6 +122,8 @@
 			children = (
 				8300000000000002 /* Session.swift */,
 				8300000000000003 /* Transcription.swift */,
+				8300000000000010 /* DictionaryEntry.swift */,
+				8300000000000017 /* Meeting.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -109,6 +140,7 @@
 			isa = PBXGroup;
 			children = (
 				8300000000000005 /* AudioRecorder.swift */,
+				8300000000000011 /* SoundManager.swift */,
 			);
 			path = Audio;
 			sourceTree = "<group>";
@@ -117,6 +149,10 @@
 			isa = PBXGroup;
 			children = (
 				8300000000000006 /* TranscriptionEngine.swift */,
+				8300000000000012 /* TextProcessor.swift */,
+				8300000000000018 /* MeetingSegmenter.swift */,
+				8300000000000019 /* MeetingSummarizer.swift */,
+				830000000000001B /* LocalLLMEngine.swift */,
 			);
 			path = Transcription;
 			sourceTree = "<group>";
@@ -130,6 +166,10 @@
 				830000000000000A /* MenuBarView.swift */,
 				830000000000000B /* SettingsView.swift */,
 				830000000000000F /* OnboardingView.swift */,
+				8300000000000014 /* PersonalDictionaryView.swift */,
+				8300000000000015 /* MetricsView.swift */,
+				830000000000001A /* MeetingNotesView.swift */,
+				830000000000001E /* SettingsWindowManager.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -140,6 +180,14 @@
 				830000000000000C /* Assets.xcassets */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		8304000000000009 /* Intents */ = {
+			isa = PBXGroup;
+			children = (
+				8300000000000016 /* AmbiIntents.swift */,
+			);
+			path = Intents;
 			sourceTree = "<group>";
 		};
 		8304000000000010 /* Products */ = {
@@ -169,6 +217,8 @@
 			packageProductDependencies = (
 				830200000000000D /* GRDB */,
 				830200000000000E /* WhisperKit */,
+				830200000000001C /* MLXLLM */,
+				830200000000001D /* MLXLMCommon */,
 			);
 			productName = Ambi;
 			productReference = 8300000000000000 /* Ambi.app */;
@@ -201,6 +251,7 @@
 			packageReferences = (
 				8309000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
 				8309000000000002 /* XCRemoteSwiftPackageReference "WhisperKit" */,
+				8309000000000003 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
 			);
 			productRefGroup = 8304000000000010 /* Products */;
 			projectDirPath = "";
@@ -239,6 +290,18 @@
 				830100000000000A /* MenuBarView.swift in Sources */,
 				830100000000000B /* SettingsView.swift in Sources */,
 				830100000000000F /* OnboardingView.swift in Sources */,
+				8301000000000010 /* DictionaryEntry.swift in Sources */,
+				8301000000000011 /* SoundManager.swift in Sources */,
+				8301000000000012 /* TextProcessor.swift in Sources */,
+				8301000000000014 /* PersonalDictionaryView.swift in Sources */,
+				8301000000000015 /* MetricsView.swift in Sources */,
+				8301000000000016 /* AmbiIntents.swift in Sources */,
+				8301000000000017 /* Meeting.swift in Sources */,
+				8301000000000018 /* MeetingSegmenter.swift in Sources */,
+				8301000000000019 /* MeetingSummarizer.swift in Sources */,
+				830100000000001A /* MeetingNotesView.swift in Sources */,
+				830100000000001B /* LocalLLMEngine.swift in Sources */,
+				830100000000001E /* SettingsWindowManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -298,7 +361,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -355,7 +418,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
@@ -463,6 +526,14 @@
 				minimumVersion = 0.9.0;
 			};
 		};
+		8309000000000003 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
+			requirement = {
+				kind = branch;
+				branch = main;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -475,6 +546,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 8309000000000002 /* XCRemoteSwiftPackageReference "WhisperKit" */;
 			productName = WhisperKit;
+		};
+		830200000000001C /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8309000000000003 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLLM;
+		};
+		830200000000001D /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8309000000000003 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLMCommon;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

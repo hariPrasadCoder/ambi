@@ -95,14 +95,6 @@ struct NotchHeader: View {
                 .disabled(!appState.isRecording)
                 .opacity(appState.isRecording ? 1 : 0.5)
                 
-                // New session button
-                ControlButton(
-                    icon: "plus",
-                    label: "New",
-                    color: .blue,
-                    action: { appState.startNewSession() }
-                )
-                
                 // Open app button
                 ControlButton(
                     icon: "macwindow",
@@ -151,9 +143,9 @@ struct NotchHeader: View {
             return "Loading model..."
         }
         if !appState.isRecording {
-            return "Not recording"
+            return "Idle"
         }
-        return appState.isPaused ? "Paused" : "Recording"
+        return appState.isPaused ? "Paused" : "Taking notes"
     }
     
     private var modelDisplayName: String {
@@ -173,12 +165,13 @@ struct NotchHeader: View {
     }
     
     private func openApp() {
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        for window in NSApplication.shared.windows {
-            if window.title.isEmpty || window.title == "Ambi" {
-                window.makeKeyAndOrderFront(nil)
-                break
-            }
+        NSApp.activate(ignoringOtherApps: true)
+        // Find the main WindowGroup window (not a panel or popover)
+        if let window = NSApp.windows.first(where: { $0.canBecomeMain && !($0 is NSPanel) }) {
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            // Window was closed — trigger reopen which creates a new WindowGroup window
+            _ = NSApp.delegate?.applicationShouldHandleReopen?(NSApp, hasVisibleWindows: false)
         }
     }
 }
@@ -275,7 +268,17 @@ struct QuickActionsView: View {
                 title: "Settings...",
                 shortcut: "⌘,"
             ) {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                SettingsWindowManager.shared.open(appState: appState)
+            }
+
+            Divider().padding(.horizontal, 4)
+
+            MenuRowButton(
+                icon: "power",
+                title: "Quit Ambi",
+                shortcut: "⌘Q"
+            ) {
+                NSApplication.shared.terminate(nil)
             }
         }
         .padding(.horizontal, 8)
