@@ -240,66 +240,132 @@ struct FeatureRow: View {
 
 struct PermissionStep: View {
     @EnvironmentObject var appState: AppState
-    @State private var isRequesting = false
-    
+    @State private var isRequestingMic = false
+    @State private var isRequestingSystemAudio = false
+
     var body: some View {
         VStack(spacing: 32) {
-            // Icon
-            ZStack {
-                Circle()
-                    .fill(appState.hasMicrophonePermission ? Color.green.opacity(0.2) : Color.orange.opacity(0.2))
-                    .frame(width: 120, height: 120)
-                
-                Image(systemName: appState.hasMicrophonePermission ? "checkmark.circle.fill" : "mic.fill")
-                    .font(.system(size: 48))
-                    .foregroundStyle(appState.hasMicrophonePermission ? .green : .orange)
-            }
-            
-            VStack(spacing: 16) {
-                Text(appState.hasMicrophonePermission ? "Microphone Access Granted" : "Microphone Access Required")
+            VStack(spacing: 8) {
+                Text("Permissions")
                     .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(.white)
-                
-                Text(appState.hasMicrophonePermission 
-                     ? "You're all set! Ambi can now record and transcribe your voice."
-                     : "Ambi needs microphone access to record and transcribe your voice. Your audio is processed locally and never leaves your device.")
+
+                Text("Ambi needs microphone access to work.\nSystem audio is optional — for capturing calls.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 400)
             }
-            
-            if !appState.hasMicrophonePermission {
-                Button(action: requestPermission) {
-                    HStack(spacing: 8) {
+
+            VStack(spacing: 12) {
+                PermissionCard(
+                    icon: "mic.fill",
+                    title: "Microphone",
+                    description: "Record your own voice",
+                    isGranted: appState.hasMicrophonePermission,
+                    isOptional: false,
+                    isRequesting: isRequestingMic
+                ) {
+                    isRequestingMic = true
+                    Task {
+                        _ = await appState.requestMicrophonePermission()
+                        isRequestingMic = false
+                    }
+                }
+
+                PermissionCard(
+                    icon: "speaker.wave.2.fill",
+                    title: "System Audio",
+                    description: "Capture calls (Google Meet, Zoom…)",
+                    isGranted: appState.hasSystemAudioPermission,
+                    isOptional: true,
+                    isRequesting: isRequestingSystemAudio
+                ) {
+                    isRequestingSystemAudio = true
+                    Task {
+                        _ = await appState.requestSystemAudioPermission()
+                        isRequestingSystemAudio = false
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 60)
+    }
+}
+
+struct PermissionCard: View {
+    let icon: String
+    let title: String
+    let description: String
+    let isGranted: Bool
+    let isOptional: Bool
+    let isRequesting: Bool
+    let onGrant: () -> Void
+
+    var body: some View {
+        HStack(spacing: 16) {
+            Image(systemName: icon)
+                .font(.system(size: 28))
+                .foregroundStyle(isGranted ? .green : .orange)
+                .frame(width: 44)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                    if isOptional {
+                        Text("Optional")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Color.white.opacity(0.1)))
+                    }
+                }
+                Text(description)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            if isGranted {
+                Label("Granted", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .font(.subheadline)
+            } else {
+                Button(action: onGrant) {
+                    Group {
                         if isRequesting {
                             ProgressView()
                                 .controlSize(.small)
+                        } else {
+                            Text("Grant Access")
                         }
-                        Text("Grant Access")
-                            .font(.headline)
                     }
+                    .font(.subheadline)
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 32)
-                    .padding(.vertical, 14)
-                    .background(
-                        Capsule()
-                            .fill(Color.orange)
-                    )
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Capsule().fill(Color.orange))
                 }
                 .buttonStyle(.plain)
                 .disabled(isRequesting)
             }
         }
-        .padding(.horizontal, 60)
-    }
-    
-    private func requestPermission() {
-        isRequesting = true
-        Task {
-            _ = await appState.requestMicrophonePermission()
-            isRequesting = false
-        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.white.opacity(0.07))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(
+                            isGranted ? Color.green.opacity(0.4) : Color.white.opacity(0.1),
+                            lineWidth: 1
+                        )
+                )
+        )
     }
 }
 

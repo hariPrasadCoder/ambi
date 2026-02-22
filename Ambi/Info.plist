@@ -26,7 +26,7 @@
     <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Ambi needs access to your microphone to record and transcribe your voice.</string>
-    <key>NSHumanReadableCopyright</key>
+<key>NSHumanReadableCopyright</key>
     <string>Copyright © 2024 Hari. All rights reserved.</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.productivity</string>

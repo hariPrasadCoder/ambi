@@ -46,9 +46,11 @@ struct SettingsView: View {
 // MARK: - General Settings
 
 struct GeneralSettings: View {
+    @EnvironmentObject var appState: AppState
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @AppStorage("showInDock") private var showInDock = false
     @AppStorage("audioFeedbackEnabled") private var audioFeedbackEnabled = true
+    @AppStorage("audioSource") private var audioSourceRaw = "microphone"
 
     var body: some View {
         Form {
@@ -79,6 +81,26 @@ struct GeneralSettings: View {
             }
 
             Section {
+                Picker("Audio Source", selection: $audioSourceRaw) {
+                    ForEach(AudioSource.allCases, id: \.rawValue) { src in
+                        Text(src.displayName).tag(src.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text("Recording Source")
+            } footer: {
+                switch AudioSource(rawValue: audioSourceRaw) ?? .microphone {
+                case .microphone:
+                    Text("Records your microphone. Best for in-person conversations.")
+                case .systemAudio:
+                    Text("Records system audio (calls, speakers). Requires System Audio permission.")
+                case .both:
+                    Text("Records both microphone and system audio. Best for calls where you also speak.")
+                }
+            }
+
+            Section {
                 HStack {
                     Text("Microphone")
                     Spacer()
@@ -91,12 +113,31 @@ struct GeneralSettings: View {
                         }
                     }
                 }
+
+                let source = AudioSource(rawValue: audioSourceRaw) ?? .microphone
+                if source == .systemAudio || source == .both {
+                    HStack {
+                        Text("System Audio")
+                        Spacer()
+                        if appState.hasSystemAudioPermission {
+                            Label("Granted", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                        } else {
+                            Button("Grant Access") {
+                                Task { _ = await appState.requestSystemAudioPermission() }
+                            }
+                        }
+                    }
+                }
             } header: {
                 Text("Permissions")
             }
         }
         .formStyle(.grouped)
         .padding()
+        .onAppear {
+            appState.checkSystemAudioPermission()
+        }
     }
     
     private func setLaunchAtLogin(_ enabled: Bool) {

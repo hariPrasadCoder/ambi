@@ -57,7 +57,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Register UserDefaults defaults so toggles start enabled
         UserDefaults.standard.register(defaults: [
             "audioFeedbackEnabled": true,
-            "showFloatingIndicator": true
+            "showFloatingIndicator": true,
+            "audioSource": "microphone"
         ])
         AmbiShortcuts.updateAppShortcutParameters()
         Task {
@@ -90,6 +91,22 @@ struct ContentView: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: appState.needsOnboarding)
+    }
+}
+
+// MARK: - Audio Source
+
+enum AudioSource: String, CaseIterable {
+    case microphone  = "microphone"
+    case systemAudio = "systemAudio"
+    case both        = "both"
+
+    var displayName: String {
+        switch self {
+        case .microphone:  return "Microphone"
+        case .systemAudio: return "System Audio"
+        case .both:        return "Mic + System"
+        }
     }
 }
 
@@ -129,6 +146,14 @@ class AppState: ObservableObject {
     // New feature state
     @Published var dictionaryEntries: [DictionaryEntry] = []
     @Published var currentAudioLevel: Float = 0
+
+    // System audio
+    private var systemAudioRecorder: SystemAudioRecorder?
+    @Published var hasSystemAudioPermission = false
+
+    var audioSource: AudioSource {
+        AudioSource(rawValue: UserDefaults.standard.string(forKey: "audioSource") ?? "microphone") ?? .microphone
+    }
 
     // Components
     private var audioRecorder: AudioRecorder?
@@ -221,6 +246,21 @@ class AppState: ObservableObject {
         }
 
         audioRecorder = recorder
+
+        // Initialize system audio recorder (uses same callback pipeline)
+        let sysRecorder = SystemAudioRecorder()
+        sysRecorder.processingInterval = interval > 0 ? interval : 30
+        sysRecorder.transcriptionCallback = { [weak self] audioData in
+            Task { @MainActor in
+                await self?.processAudio(audioData)
+            }
+        }
+        sysRecorder.onAudioLevelChanged = { [weak self] level in
+            Task { @MainActor in self?.currentAudioLevel = level }
+        }
+        systemAudioRecorder = sysRecorder
+        hasSystemAudioPermission = SystemAudioRecorder.hasPermission()
+
         isLoading = false
 
         // Load personal dictionary into engine
@@ -279,6 +319,16 @@ class AppState: ObservableObject {
         }
     }
     
+    func checkSystemAudioPermission() {
+        hasSystemAudioPermission = SystemAudioRecorder.hasPermission()
+    }
+
+    func requestSystemAudioPermission() async -> Bool {
+        let granted = await Task.detached { SystemAudioRecorder.requestPermission() }.value
+        hasSystemAudioPermission = granted
+        return granted
+    }
+
     func requestMicrophonePermission() async -> Bool {
         return await withCheckedContinuation { continuation in
             AVCaptureDevice.requestAccess(for: .audio) { granted in
@@ -292,11 +342,30 @@ class AppState: ObservableObject {
     
     func startRecording() {
         guard !isRecording, isModelLoaded else { return }
-        audioRecorder?.startRecording()
+        let source = audioSource
+        if source == .microphone || source == .both {
+            audioRecorder?.startRecording()
+        }
+        if source == .systemAudio || source == .both {
+            Task {
+                do {
+                    try await systemAudioRecorder?.start()
+                    // For system-audio-only, audioRecorder won't fire onRecordingStarted
+                    if source == .systemAudio {
+                        isRecording = true
+                        isPaused = false
+                        SoundManager.shared.play(.recordingStarted)
+                    }
+                } catch {
+                    print("SystemAudioRecorder start failed: \(error)")
+                }
+            }
+        }
     }
     
     func pauseRecording() {
         audioRecorder?.pauseRecording()
+        systemAudioRecorder?.pause()
         isPaused = true
         SoundManager.shared.play(.recordingPaused)
 
@@ -308,6 +377,7 @@ class AppState: ObservableObject {
 
     func resumeRecording() {
         audioRecorder?.resumeRecording()
+        systemAudioRecorder?.resume()
         isPaused = false
         liveTranscript = ""
         SoundManager.shared.play(.recordingResumed)
@@ -315,6 +385,7 @@ class AppState: ObservableObject {
 
     func stopRecording() {
         audioRecorder?.stopRecording()
+        Task { await systemAudioRecorder?.stop() }
         isRecording = false
     }
     
@@ -331,6 +402,7 @@ class AppState: ObservableObject {
     func startNewSession() {
         Task {
             audioRecorder?.startNewSession()
+            systemAudioRecorder?.startNewSession()
             liveTranscript = ""
             currentTranscription = ""
             

@@ -12,6 +12,7 @@
 		8301000000000003 /* Transcription.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8300000000000003 /* Transcription.swift */; };
 		8301000000000004 /* DatabaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8300000000000004 /* DatabaseManager.swift */; };
 		8301000000000005 /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8300000000000005 /* AudioRecorder.swift */; };
+		830100000000001F /* SystemAudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830000000000001C /* SystemAudioRecorder.swift */; };
 		8301000000000006 /* TranscriptionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8300000000000006 /* TranscriptionEngine.swift */; };
 		8301000000000007 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8300000000000007 /* MainView.swift */; };
 		8301000000000008 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8300000000000008 /* SidebarView.swift */; };
@@ -45,6 +46,7 @@
 		8300000000000003 /* Transcription.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transcription.swift; sourceTree = "<group>"; };
 		8300000000000004 /* DatabaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseManager.swift; sourceTree = "<group>"; };
 		8300000000000005 /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
+		830000000000001C /* SystemAudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioRecorder.swift; sourceTree = "<group>"; };
 		8300000000000006 /* TranscriptionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionEngine.swift; sourceTree = "<group>"; };
 		8300000000000007 /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		8300000000000008 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
@@ -140,6 +142,7 @@
 			isa = PBXGroup;
 			children = (
 				8300000000000005 /* AudioRecorder.swift */,
+				830000000000001C /* SystemAudioRecorder.swift */,
 				8300000000000011 /* SoundManager.swift */,
 			);
 			path = Audio;
@@ -283,6 +286,7 @@
 				8301000000000003 /* Transcription.swift in Sources */,
 				8301000000000004 /* DatabaseManager.swift in Sources */,
 				8301000000000005 /* AudioRecorder.swift in Sources */,
+				830100000000001F /* SystemAudioRecorder.swift in Sources */,
 				8301000000000006 /* TranscriptionEngine.swift in Sources */,
 				8301000000000007 /* MainView.swift in Sources */,
 				8301000000000008 /* SidebarView.swift in Sources */,
@@ -449,6 +453,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.hari.ambi;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -479,6 +484,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.hari.ambi;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
